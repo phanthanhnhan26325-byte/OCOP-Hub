@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f4ec;
+  --foreground: #10281f;
+  --muted: #4f675f;
+  --card: #ffffff;
+  --stroke: #d7d0b8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-be-vietnam-pro);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-be-vietnam-pro), system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+::selection {
+  background: rgba(31, 94, 69, 0.2);
+}
