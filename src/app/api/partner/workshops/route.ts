@@ -24,12 +24,13 @@ export async function GET() {
   try {
     const user = await requireApprovedPartner();
     const supabase = await supabaseServer();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('workshops')
       .select('*, workshop_sessions(*)')
       .eq('partner_id', user.id)
       .order('created_at', { ascending: false });
-    return NextResponse.json({ workshops: data ?? [] });
+    if (error) throw new Error(error.message);
+    return NextResponse.json({ workshops: data });
   } catch (err) {
     return handleApiError(err);
   }
@@ -52,13 +53,13 @@ export async function POST(req: NextRequest) {
         slug: d.slug,
         description: d.description ?? '',
         cover_image: d.coverImage ?? null,
-        status: d.action === 'submit' ? 'PENDING' : 'DRAFT',
+        status: 'DRAFT',
       })
       .select('id')
       .single();
     if (error) throw new Error(error.message);
 
-    await supabase.from('workshop_sessions').insert(
+    const { error: sessionsError } = await supabase.from('workshop_sessions').insert(
       d.sessions.map((s) => ({
         workshop_id: ws.id,
         starts_at: s.startsAt,
@@ -70,6 +71,29 @@ export async function POST(req: NextRequest) {
         status: 'SCHEDULED',
       })),
     );
+    if (sessionsError) {
+      const { error: cleanupError } = await supabase.from('workshops').delete().eq('id', ws.id);
+      if (cleanupError) {
+        throw new Error(`${sessionsError.message}; không thể hoàn tác workshop: ${cleanupError.message}`);
+      }
+      throw new Error(sessionsError.message);
+    }
+    if (d.action === 'submit') {
+      const { error: submitError } = await supabase
+        .from('workshops')
+        .update({ status: 'PENDING', updated_at: new Date().toISOString() })
+        .eq('id', ws.id)
+        .eq('status', 'DRAFT')
+        .select('id')
+        .single();
+      if (submitError) {
+        const { error: cleanupError } = await supabase.from('workshops').delete().eq('id', ws.id);
+        if (cleanupError) {
+          throw new Error(`${submitError.message}; không thể hoàn tác workshop: ${cleanupError.message}`);
+        }
+        throw new Error(submitError.message);
+      }
+    }
     return NextResponse.json({ id: ws.id }, { status: 201 });
   } catch (err) {
     return handleApiError(err);

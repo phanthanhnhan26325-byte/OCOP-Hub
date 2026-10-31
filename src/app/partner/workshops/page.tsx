@@ -14,11 +14,12 @@ const wStatus: Record<string, string> = {
 export default async function PartnerWorkshopsPage() {
   const user = await requireApprovedPartner();
   const supabase = await supabaseServer();
-  const { data: workshops } = await supabase
+  const { data: workshops, error } = await supabase
     .from('workshops')
     .select('*, workshop_sessions(*, workshop_registrations(id, status))')
     .eq('partner_id', user.id)
     .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
@@ -28,7 +29,7 @@ export default async function PartnerWorkshopsPage() {
         <WorkshopForm />
       </div>
       <div className="mt-8 space-y-4">
-        {(workshops ?? []).map((w) => (
+        {workshops.map((w) => (
           <div key={w.id} className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex items-start justify-between">
               <div>
@@ -54,6 +55,7 @@ export default async function PartnerWorkshopsPage() {
             </ul>
           </div>
         ))}
+        {workshops.length === 0 && <p className="text-slate-500">Chưa có workshop nào.</p>}
       </div>
     </div>
   );

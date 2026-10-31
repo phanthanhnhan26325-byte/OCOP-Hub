@@ -9,8 +9,10 @@ interface CartRow {
   id: string;
   qty: number;
   product_id: string;
+  variant_id: string | null;
+  product_variants: { id: string; label: string; price: string | number } | null;
   products: {
-    name: string; slug: string; price: string; partner_id: string;
+    name: string; slug: string; price: string; classifications: string[]; partner_id: string;
     product_images: { url: string; sort_order: number }[];
     product_availability: { available_qty: number; reserved_qty: number } | null;
     partner_profiles: { business_name: string } | null;
@@ -21,6 +23,8 @@ interface CartItem {
   id: string;
   qty: number;
   product_id: string;
+  variant_id: string | null;
+  product_variants: CartRow['product_variants'];
   products: CartRow['products'];
 }
 
@@ -43,7 +47,10 @@ export function CartView() {
       return;
     }
     const data = await res.json();
-    setItems((data.items ?? []).map((r: CartRow) => ({ id: r.id, qty: r.qty, product_id: r.product_id, products: r.products })));
+    setItems((data.items ?? []).map((r: CartRow) => ({
+      id: r.id, qty: r.qty, product_id: r.product_id, variant_id: r.variant_id,
+      product_variants: r.product_variants, products: r.products,
+    })));
     setLoading(false);
   }, [router]);
 
@@ -57,7 +64,10 @@ export function CartView() {
         return;
       }
       const data = await res.json();
-      setItems((data.items ?? []).map((r: CartRow) => ({ id: r.id, qty: r.qty, product_id: r.product_id, products: r.products })));
+      setItems((data.items ?? []).map((r: CartRow) => ({
+        id: r.id, qty: r.qty, product_id: r.product_id, variant_id: r.variant_id,
+        product_variants: r.product_variants, products: r.products,
+      })));
       setLoading(false);
     })();
     return () => {
@@ -77,7 +87,7 @@ export function CartView() {
         };
       }
       acc[pid].items.push(item);
-      acc[pid].subtotal += Number(item.products?.price ?? 0) * item.qty;
+      acc[pid].subtotal += Number(item.product_variants?.price ?? item.products?.price ?? 0) * item.qty;
       return acc;
     }, {}),
   );
@@ -124,7 +134,8 @@ export function CartView() {
                     <img src={item.products?.product_images?.[0]?.url ?? 'https://placehold.co/80'} alt="" className="h-16 w-16 rounded-lg object-cover" />
                     <div className="flex-1">
                       <p className="text-sm font-medium">{item.products?.name}</p>
-                      <p className="text-sm text-emerald-700">{formatVnd(item.products?.price ?? 0)}</p>
+                      {item.product_variants && <p className="text-xs text-slate-500">Khối lượng: {item.product_variants.label}</p>}
+                      <p className="text-sm text-emerald-700">{formatVnd(item.product_variants?.price ?? item.products?.price ?? 0)}</p>
                       {remaining < item.qty && <p className="text-xs text-amber-600">Chỉ còn {remaining} — vui lòng giảm số lượng</p>}
                     </div>
                     <div className="flex items-center gap-2">

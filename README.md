@@ -26,6 +26,12 @@ cp .env.example .env.local
 - `0001_schema.sql` — bảng, enum, trigger
 - `0002_rls.sql` — Row Level Security
 - `0003_functions.sql` — RPC: `checkout`, `register_workshop`, `apply_payment_success`, `expire_holds`, `generate_settlement`, ...
+- `0004_customer_profile.sql` — hồ sơ khách hàng và ảnh đại diện
+- `0005_product_workflow.sql` — quyền tạo, gửi duyệt, xem ảnh và quản trị sản phẩm
+- `0006_partner_workflow_notifications.sql` — quyền tạo workshop và thông báo sản phẩm, workshop, đơn hàng
+- `0007_product_image_uploads.sql` — bucket ảnh sản phẩm PNG/JPG, giới hạn 5 MB mỗi ảnh
+- `0008_product_variants.sql` — biến thể khối lượng có giá riêng và checkout theo biến thể
+- `0009_product_categories.sql` — danh mục sản phẩm dạng thanh thả xuống
 
 (Có thể dùng Supabase CLI: `supabase db push`.)
 

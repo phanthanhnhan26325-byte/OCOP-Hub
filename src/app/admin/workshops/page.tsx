@@ -8,17 +8,18 @@ export const dynamic = 'force-dynamic';
 export default async function AdminWorkshopsPage() {
   await requireRole('ADMIN');
   const supabase = await supabaseServer();
-  const { data: workshops } = await supabase
+  const { data: workshops, error } = await supabase
     .from('workshops')
     .select('id, title, slug, description, status, created_at, partner_profiles(business_name), workshop_sessions(starts_at, ends_at, location, fee, capacity)')
     .eq('status', 'PENDING')
     .order('created_at');
+  if (error) throw new Error(error.message);
 
   return (
     <div>
       <h1 className="text-2xl font-bold">Phê duyệt workshop</h1>
       <div className="mt-6 space-y-4">
-        {(workshops ?? []).map((w) => (
+        {workshops.map((w) => (
           <div key={w.id} className="rounded-xl border border-slate-200 bg-white p-4">
             <h3 className="font-semibold">{w.title}</h3>
             <p className="text-sm text-slate-500">{(w.partner_profiles as unknown as { business_name: string } | null)?.business_name}</p>
@@ -31,7 +32,7 @@ export default async function AdminWorkshopsPage() {
             <ReviewControls endpoint={`/api/admin/workshops/${w.id}/review`} />
           </div>
         ))}
-        {(!workshops || workshops.length === 0) && <p className="text-slate-500">Không có workshop chờ duyệt.</p>}
+        {workshops.length === 0 && <p className="text-slate-500">Không có workshop chờ duyệt.</p>}
       </div>
     </div>
   );

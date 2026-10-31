@@ -15,7 +15,8 @@ const patchSchema = z.object({
 });
 
 async function assertOwnership(supabase: Awaited<ReturnType<typeof supabaseServer>>, productId: string, partnerId: string) {
-  const { data } = await supabase.from('products').select('id, partner_id').eq('id', productId).single();
+  const { data, error } = await supabase.from('products').select('id, partner_id').eq('id', productId).maybeSingle();
+  if (error) throw new Error(error.message);
   if (!data || data.partner_id !== partnerId) {
     const { forbidden, notFound } = await import('@/lib/errors');
     throw data ? forbidden('Sản phẩm không thuộc doanh nghiệp của bạn') : notFound('Không tìm thấy sản phẩm');
@@ -41,14 +42,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (d.price !== undefined) productUpdate.price = d.price;
     if (d.action === 'submit') productUpdate.status = 'PENDING';
 
-    const { error } = await supabase.from('products').update(productUpdate).eq('id', id);
-    if (error) throw new Error(error.message);
-
     const availUpdate: Record<string, unknown> = { updated_at: new Date().toISOString(), updated_by: user.id };
     if (d.availableQty !== undefined) availUpdate.available_qty = d.availableQty;
     if (d.supplyStatus) availUpdate.supply_status = d.supplyStatus;
     if (d.preOrderEta !== undefined) availUpdate.pre_order_eta = d.preOrderEta;
-    await supabase.from('product_availability').update(availUpdate).eq('product_id', id);
+    if (d.availableQty !== undefined || d.supplyStatus || d.preOrderEta !== undefined) {
+      const { data: availability, error: availabilityError } = await supabase
+        .from('product_availability')
+        .update(availUpdate)
+        .eq('product_id', id)
+        .select('product_id')
+        .maybeSingle();
+      if (availabilityError) throw new Error(availabilityError.message);
+      if (!availability) throw new Error('Không tìm thấy thông tin cung ứng của sản phẩm');
+    }
+
+    const { data: updated, error } = await supabase
+      .from('products')
+      .update(productUpdate)
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!updated) throw new Error('Không thể cập nhật sản phẩm');
 
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -62,7 +78,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params;
     const supabase = await supabaseServer();
     await assertOwnership(supabase, id, user.id);
-    await supabase.from('products').delete().eq('id', id);
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return handleApiError(err);

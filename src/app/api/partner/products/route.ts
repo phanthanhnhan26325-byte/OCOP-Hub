@@ -9,9 +9,18 @@ const productSchema = z.object({
   shortDescription: z.string().max(300).optional(),
   description: z.string().optional(),
   price: z.number().positive(),
-  categoryId: z.string().uuid().optional().nullable(),
+  categoryId: z.string().uuid(),
+  variants: z.array(z.object({
+    label: z.string().trim().min(1).max(80),
+    price: z.number().positive(),
+  })).default([]).superRefine((variants, ctx) => {
+    const labels = variants.map((variant) => variant.label.toLocaleLowerCase('vi'));
+    if (new Set(labels).size !== labels.length) {
+      ctx.addIssue({ code: 'custom', message: 'Khối lượng của các biến thể không được trùng nhau' });
+    }
+  }),
   ocopCertNo: z.string().optional(),
-  images: z.array(z.string().url()).max(8).default([]),
+  images: z.array(z.string().url()).min(1, 'Vui lòng tải lên ít nhất 1 ảnh sản phẩm').max(10, 'Chỉ được tải tối đa 10 ảnh'),
   availableQty: z.number().int().min(0),
   supplyStatus: z.enum(['IN_STOCK', 'OUT_OF_STOCK', 'PRE_ORDER']).default('IN_STOCK'),
   preOrderEta: z.string().optional().nullable(),
@@ -21,12 +30,13 @@ export async function GET() {
   try {
     const user = await requireApprovedPartner();
     const supabase = await supabaseServer();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('products')
-      .select('*, product_images(url, sort_order), product_availability(*)')
+      .select('*, product_categories(name), product_images(url, sort_order), product_availability(*), product_variants(id, label, price)')
       .eq('partner_id', user.id)
       .order('created_at', { ascending: false });
-    return NextResponse.json({ products: data ?? [] });
+    if (error) throw new Error(error.message);
+    return NextResponse.json({ products: data });
   } catch (err) {
     return handleApiError(err);
   }
@@ -44,11 +54,24 @@ export async function POST(req: NextRequest) {
     }
     const supabase = await supabaseServer();
     const d = body.data;
+    const { data: category, error: categoryError } = await supabase
+      .from('product_categories')
+      .select('id, name')
+      .eq('id', d.categoryId)
+      .eq('status', 'ACTIVE')
+      .maybeSingle();
+    if (categoryError) throw new Error(categoryError.message);
+    if (!category || !['Đặc sản', 'Quà tặng', 'Đồ lưu niệm', 'Khác'].includes(category.name)) {
+      return NextResponse.json(
+        { error: { code: 'INVALID_CATEGORY', message: 'Vui lòng chọn danh mục sản phẩm hợp lệ' } },
+        { status: 400 },
+      );
+    }
     const { data: product, error } = await supabase
       .from('products')
       .insert({
         partner_id: user.id,
-        category_id: d.categoryId ?? null,
+        category_id: d.categoryId,
         name: d.name,
         slug: d.slug,
         short_description: d.shortDescription ?? '',
@@ -61,17 +84,61 @@ export async function POST(req: NextRequest) {
       .single();
     if (error) throw new Error(error.message);
 
-    await supabase.from('product_availability').insert({
+    const { error: availabilityError } = await supabase.from('product_availability').insert({
       product_id: product.id,
       available_qty: d.availableQty,
       supply_status: d.supplyStatus,
       pre_order_eta: d.preOrderEta ?? null,
       updated_by: user.id,
     });
+    if (availabilityError) {
+      const { error: cleanupError } = await supabase.from('products').delete().eq('id', product.id);
+      if (cleanupError) {
+        throw new Error(`${availabilityError.message}; không thể hoàn tác sản phẩm: ${cleanupError.message}`);
+      }
+      throw new Error(availabilityError.message);
+    }
     if (d.images.length) {
-      await supabase.from('product_images').insert(
+      const { error: imageError } = await supabase.from('product_images').insert(
         d.images.map((url, i) => ({ product_id: product.id, url, sort_order: i })),
       );
+      if (imageError) {
+        const { error: cleanupError } = await supabase.from('products').delete().eq('id', product.id);
+        if (cleanupError) {
+          throw new Error(`${imageError.message}; không thể hoàn tác sản phẩm: ${cleanupError.message}`);
+        }
+        throw new Error(imageError.message);
+      }
+    }
+    if (d.variants.length) {
+      const { error: variantsError } = await supabase.from('product_variants').insert(
+        d.variants.map((variant) => ({
+          product_id: product.id,
+          label: variant.label,
+          price: variant.price,
+        })),
+      );
+      if (variantsError) {
+        const { error: cleanupError } = await supabase.from('products').delete().eq('id', product.id);
+        if (cleanupError) {
+          throw new Error(`${variantsError.message}; không thể hoàn tác sản phẩm: ${cleanupError.message}`);
+        }
+        throw new Error(variantsError.message);
+      }
+    }
+    const { error: submitError } = await supabase
+      .from('products')
+      .update({ status: 'PENDING', updated_at: new Date().toISOString() })
+      .eq('id', product.id)
+      .eq('status', 'DRAFT')
+      .select('id')
+      .single();
+    if (submitError) {
+      const { error: cleanupError } = await supabase.from('products').delete().eq('id', product.id);
+      if (cleanupError) {
+        throw new Error(`${submitError.message}; không thể hoàn tác sản phẩm: ${cleanupError.message}`);
+      }
+      throw new Error(submitError.message);
     }
     return NextResponse.json({ id: product.id }, { status: 201 });
   } catch (err) {

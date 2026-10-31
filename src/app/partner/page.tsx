@@ -69,16 +69,20 @@ export default async function PartnerDashboardPage() {
             </div>
           </div>
           <nav className="mt-8 grid gap-3 sm:grid-cols-2">
-            {[
-              ['/partner/products', 'Quản lý sản phẩm'],
-              ['/partner/workshops', 'Quản lý workshop'],
-              ['/partner/orders', 'Quản lý phần đơn'],
-              ['/partner/settlements', 'Đối soát & thanh toán'],
-            ].map(([href, label]) => (
-              <Link key={href} href={href} className="rounded-xl border border-slate-200 bg-white px-4 py-4 font-medium hover:border-emerald-300 hover:shadow-sm">
-                {label} →
-              </Link>
-            ))}
+            <Link href="/partner/products" className="rounded-xl border border-emerald-200 bg-white px-5 py-5 hover:border-emerald-400 hover:shadow-sm">
+              <span className="block font-semibold text-emerald-800">Tạo sản phẩm</span>
+              <span className="mt-1 block text-sm text-slate-500">Gửi thông tin sản phẩm để Admin phê duyệt.</span>
+            </Link>
+            <Link href="/partner/workshops" className="rounded-xl border border-emerald-200 bg-white px-5 py-5 hover:border-emerald-400 hover:shadow-sm">
+              <span className="block font-semibold text-emerald-800">Tạo workshop</span>
+              <span className="mt-1 block text-sm text-slate-500">Tạo lịch workshop và gửi yêu cầu phê duyệt.</span>
+            </Link>
+            <Link href="/partner/orders" className="rounded-xl border border-slate-200 bg-white px-4 py-4 font-medium hover:border-emerald-300 hover:shadow-sm">
+              Quản lý đơn hàng →
+            </Link>
+            <Link href="/partner/settlements" className="rounded-xl border border-slate-200 bg-white px-4 py-4 font-medium hover:border-emerald-300 hover:shadow-sm">
+              Đối soát & thanh toán →
+            </Link>
           </nav>
         </>
       )}

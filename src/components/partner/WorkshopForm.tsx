@@ -28,37 +28,38 @@ export function WorkshopForm() {
       onSubmit={(e) => {
         e.preventDefault();
         startTransition(async () => {
-          const res = await fetch('/api/partner/workshops', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              title,
-              slug: slugify(title),
-              description,
-              action: 'save',
-              sessions: sessions.map((s) => ({
-                startsAt: new Date(s.startsAt).toISOString(),
-                endsAt: new Date(s.endsAt).toISOString(),
-                location: s.location,
-                fee: s.fee,
-                capacity: s.capacity,
-              })),
-            }),
-          });
-          const data = await res.json().catch(() => null);
-          if (res.ok) {
-            setMsg('Đã tạo workshop (Bản nháp). Bấm "Gửi duyệt" để đăng công khai.');
+          try {
+            const res = await fetch('/api/partner/workshops', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                title,
+                slug: slugify(title),
+                description,
+                action: 'submit',
+                sessions: sessions.map((s) => ({
+                  startsAt: new Date(s.startsAt).toISOString(),
+                  endsAt: new Date(s.endsAt).toISOString(),
+                  location: s.location,
+                  fee: s.fee,
+                  capacity: s.capacity,
+                })),
+              }),
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(data?.error?.message ?? 'Gửi workshop thất bại');
+            setMsg('Đã gửi workshop thành công. Vui lòng chờ admin phê duyệt.');
             setTitle(''); setDescription('');
             setSessions([{ startsAt: '', endsAt: '', location: '', fee: 0, capacity: 20 }]);
             router.refresh();
-          } else {
-            setMsg(data?.error?.message ?? 'Tạo thất bại');
+          } catch (error) {
+            setMsg(error instanceof Error ? error.message : 'Gửi workshop thất bại');
           }
         });
       }}
       className="space-y-3"
     >
-      {msg && <p className="rounded-lg bg-slate-50 p-2 text-sm">{msg}</p>}
+      {msg && <p role="status" className="rounded-lg bg-slate-50 p-2 text-sm">{msg}</p>}
       <label className="block text-sm">Tên workshop *
         <input required value={title} onChange={(e) => setTitle(e.target.value)}
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
@@ -84,7 +85,7 @@ export function WorkshopForm() {
       </button>
       <div>
         <button disabled={pending} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
-          {pending ? 'Đang lưu...' : 'Tạo workshop'}
+          {pending ? 'Đang gửi...' : 'Gửi workshop chờ phê duyệt'}
         </button>
       </div>
     </form>

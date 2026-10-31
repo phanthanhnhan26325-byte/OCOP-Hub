@@ -3,8 +3,26 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LogoutButton } from '@/components/auth/LogoutButton';
+import { NotificationBell } from '@/components/shared/NotificationBell';
 
-export function SiteHeaderNav({ user }: { user: { email: string; roles: string[] } | null }) {
+interface NotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  ref_type: string | null;
+  ref_id: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export function SiteHeaderNav({
+  user,
+  notifications,
+}: {
+  user: { email: string; roles: string[] } | null;
+  notifications: NotificationItem[];
+}) {
   const pathname = usePathname();
   const avatarText = user?.roles.includes('ADMIN') ? 'A' : user?.roles.includes('PARTNER') ? 'P' : 'U';
   const avatarTone = user?.roles.includes('ADMIN')
@@ -59,6 +77,7 @@ export function SiteHeaderNav({ user }: { user: { email: string; roles: string[]
         <div className="flex shrink-0 items-center gap-3 text-sm">
           {user ? (
             <>
+              <NotificationBell initialNotifications={notifications} roles={user.roles} />
               <Link href="/cart" aria-label="Giỏ hàng" className="flex h-11 w-11 items-center justify-center rounded-full border border-[#d7d0b8] bg-white/60 text-[#1d4d38] transition hover:bg-white">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
                   <circle cx="9" cy="19" r="1.5" />
