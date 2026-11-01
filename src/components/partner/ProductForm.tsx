@@ -26,7 +26,7 @@ export function ProductForm({
 }) {
   const [form, setForm] = useState({
     name: '', slug: '', shortDescription: '', description: '', price: 0,
-    categoryId: '', ocopCertNo: '', availableQty: 0, supplyStatus: 'IN_STOCK', preOrderEta: '',
+    categoryId: '', ocopCertNo: '',
   });
   const [images, setImages] = useState<File[]>([]);
   const [variants, setVariants] = useState<ProductVariantInput[]>([]);
@@ -109,9 +109,6 @@ export function ProductForm({
                 variants: variants.map((variant) => ({ label: variant.label.trim(), price: variant.price })),
                 ocopCertNo: form.ocopCertNo || undefined,
                 images: imageUrls,
-                availableQty: form.availableQty,
-                supplyStatus: form.supplyStatus,
-                preOrderEta: form.preOrderEta || null,
               }),
             });
             const data = await res.json().catch(() => null);
@@ -160,19 +157,9 @@ export function ProductForm({
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
-        <label className="text-sm">Số lượng có thể cung cấp *
-          <input type="number" required min={0} value={form.availableQty || ''}
-            onChange={(e) => setForm({ ...form, availableQty: Number(e.target.value) })}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
-        </label>
-        <label className="text-sm">Tình trạng cung ứng
-          <select value={form.supplyStatus} onChange={(e) => setForm({ ...form, supplyStatus: e.target.value })}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2">
-            <option value="IN_STOCK">Có sẵn</option>
-            <option value="PRE_ORDER">Đặt trước</option>
-            <option value="OUT_OF_STOCK">Hết hàng</option>
-          </select>
-        </label>
+        <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 sm:col-span-2">
+          Tồn kho do OCOP Hub cập nhật sau khi nhập hàng tại kho trung tâm. Doanh nghiệp không thể tự sửa số lượng tồn kho.
+        </p>
         <fieldset className="space-y-2 text-sm sm:col-span-2">
           <legend className="font-medium">Biến thể khối lượng (không bắt buộc)</legend>
           <p className="text-xs text-slate-500">Tự nhập khối lượng và giá cho từng lựa chọn, ví dụ 250 g, 500 g, 1 kg.</p>
@@ -220,12 +207,6 @@ export function ProductForm({
             + Thêm biến thể khối lượng
           </button>
         </fieldset>
-        {form.supplyStatus === 'PRE_ORDER' && (
-          <label className="text-sm">Thời gian dự kiến cung cấp
-            <input type="date" value={form.preOrderEta} onChange={(e) => setForm({ ...form, preOrderEta: e.target.value })}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
-          </label>
-        )}
         <label className="text-sm">Ảnh sản phẩm * (PNG hoặc JPG, từ 1 đến {MAX_IMAGES} ảnh)
           <input
             type="file"

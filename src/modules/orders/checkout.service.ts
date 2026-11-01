@@ -3,6 +3,7 @@ import { supabaseServer } from '@/lib/supabase/server';
 import { AppError } from '@/lib/errors';
 import { requireAuth } from '@/lib/rbac';
 import { env } from '@/lib/env';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export const shippingAddressSchema = z.object({
   receiverName: z.string().min(2),
@@ -69,7 +70,7 @@ export async function checkout(input: z.infer<typeof checkoutInputSchema>): Prom
   const user = await requireAuth();
   const supabase = await supabaseServer();
 
-  const { data: rpc, error } = await supabase.rpc('checkout', {
+  const { data: rpc, error } = await supabaseAdmin().rpc('checkout', {
     p_customer: user.id,
     p_idempotency_key: input.idempotencyKey,
     p_shipping_address: {

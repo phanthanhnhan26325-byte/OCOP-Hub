@@ -8,9 +8,6 @@ const patchSchema = z.object({
   shortDescription: z.string().max(300).optional(),
   description: z.string().optional(),
   price: z.number().positive().optional(),
-  availableQty: z.number().int().min(0).optional(),
-  supplyStatus: z.enum(['IN_STOCK', 'OUT_OF_STOCK', 'PRE_ORDER']).optional(),
-  preOrderEta: z.string().nullable().optional(),
   action: z.enum(['save', 'submit']).default('save'),
 });
 
@@ -41,21 +38,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (d.description !== undefined) productUpdate.description = d.description;
     if (d.price !== undefined) productUpdate.price = d.price;
     if (d.action === 'submit') productUpdate.status = 'PENDING';
-
-    const availUpdate: Record<string, unknown> = { updated_at: new Date().toISOString(), updated_by: user.id };
-    if (d.availableQty !== undefined) availUpdate.available_qty = d.availableQty;
-    if (d.supplyStatus) availUpdate.supply_status = d.supplyStatus;
-    if (d.preOrderEta !== undefined) availUpdate.pre_order_eta = d.preOrderEta;
-    if (d.availableQty !== undefined || d.supplyStatus || d.preOrderEta !== undefined) {
-      const { data: availability, error: availabilityError } = await supabase
-        .from('product_availability')
-        .update(availUpdate)
-        .eq('product_id', id)
-        .select('product_id')
-        .maybeSingle();
-      if (availabilityError) throw new Error(availabilityError.message);
-      if (!availability) throw new Error('Không tìm thấy thông tin cung ứng của sản phẩm');
-    }
 
     const { data: updated, error } = await supabase
       .from('products')

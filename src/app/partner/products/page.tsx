@@ -2,6 +2,7 @@ import { requireApprovedPartner } from '@/lib/rbac';
 import { supabaseServer } from '@/lib/supabase/server';
 import { formatVnd } from '@/lib/money';
 import { ProductForm } from '@/components/partner/ProductForm';
+import { ProductAvailabilityForm } from '@/components/partner/ProductAvailabilityForm';
 import { SubmitProductButton } from '@/components/partner/SubmitProductButton';
 import { DeleteButton } from '@/components/partner/DeleteButton';
 
@@ -45,7 +46,7 @@ export default async function PartnerProductsPage() {
           const av = p.product_availability as { available_qty: number; reserved_qty: number; supply_status: string; pre_order_eta: string | null } | null;
           const image = p.product_images?.[0]?.url;
           return (
-            <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-4">
+            <div id={p.id} key={p.id} className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 gap-4">
                   {image && (
@@ -85,6 +86,13 @@ export default async function PartnerProductsPage() {
                   <DeleteButton url={`/api/partner/products/${p.id}`} label="Xóa" />
                 </div>
               </div>
+              <ProductAvailabilityForm
+                productId={p.id}
+                availableQty={av?.available_qty ?? 0}
+                reservedQty={av?.reserved_qty ?? 0}
+                supplyStatus={av?.supply_status ?? 'OUT_OF_STOCK'}
+                preOrderEta={av?.pre_order_eta ?? null}
+              />
             </div>
           );
         })}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { handleApiError, requireApprovedPartner } from '@/lib/rbac';
 import { supabaseServer } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 const productSchema = z.object({
   name: z.string().min(3),
@@ -21,9 +22,6 @@ const productSchema = z.object({
   }),
   ocopCertNo: z.string().optional(),
   images: z.array(z.string().url()).min(1, 'Vui lòng tải lên ít nhất 1 ảnh sản phẩm').max(10, 'Chỉ được tải tối đa 10 ảnh'),
-  availableQty: z.number().int().min(0),
-  supplyStatus: z.enum(['IN_STOCK', 'OUT_OF_STOCK', 'PRE_ORDER']).default('IN_STOCK'),
-  preOrderEta: z.string().optional().nullable(),
 });
 
 export async function GET() {
@@ -56,12 +54,12 @@ export async function POST(req: NextRequest) {
     const d = body.data;
     const { data: category, error: categoryError } = await supabase
       .from('product_categories')
-      .select('id, name')
+      .select('id')
       .eq('id', d.categoryId)
       .eq('status', 'ACTIVE')
       .maybeSingle();
     if (categoryError) throw new Error(categoryError.message);
-    if (!category || !['Đặc sản', 'Quà tặng', 'Đồ lưu niệm', 'Khác'].includes(category.name)) {
+    if (!category) {
       return NextResponse.json(
         { error: { code: 'INVALID_CATEGORY', message: 'Vui lòng chọn danh mục sản phẩm hợp lệ' } },
         { status: 400 },
@@ -84,11 +82,12 @@ export async function POST(req: NextRequest) {
       .single();
     if (error) throw new Error(error.message);
 
-    const { error: availabilityError } = await supabase.from('product_availability').insert({
+    const adminClient = supabaseAdmin();
+    const { error: availabilityError } = await adminClient.from('product_availability').insert({
       product_id: product.id,
-      available_qty: d.availableQty,
-      supply_status: d.supplyStatus,
-      pre_order_eta: d.preOrderEta ?? null,
+      available_qty: 0,
+      reserved_qty: 0,
+      supply_status: 'OUT_OF_STOCK',
       updated_by: user.id,
     });
     if (availabilityError) {

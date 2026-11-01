@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { handleApiError, requireAuth } from '@/lib/rbac';
 import { supabaseServer } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { z } from 'zod';
 
 const registerSchema = z.object({ sessionId: z.string().uuid() });
@@ -13,7 +14,7 @@ export async function POST(req: NextRequest) {
     if (!body.success) return NextResponse.json({ error: { code: 'VALIDATION' } }, { status: 400 });
 
     const supabase = await supabaseServer();
-    const { data, error } = await supabase.rpc('register_workshop', {
+    const { data, error } = await supabaseAdmin().rpc('register_workshop', {
       p_session: body.data.sessionId,
       p_customer: user.id,
     });
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     const reg = data as { registration_id: string; code: string; amount: number; hold_expires_at: string };
     // Tạo payment
-    const { data: payment } = await supabase
+    const { data: payment, error: paymentError } = await supabase
       .from('payments')
       .insert({
         purpose: 'WORKSHOP_REGISTRATION',
@@ -34,19 +35,21 @@ export async function POST(req: NextRequest) {
       })
       .select('id')
       .single();
+    if (paymentError) throw new Error(paymentError.message);
+    if (!payment) throw new Error('Không thể tạo thanh toán workshop');
 
     const { getProvider } = await import('@/modules/payments/providers');
     const { env } = await import('@/lib/env');
     const provider = getProvider('mock');
     const created = await provider.create({
-      paymentId: payment!.id,
+      paymentId: payment.id,
       amount: Number(reg.amount),
       orderCode: reg.code,
-      returnUrl: `${env.APP_URL}/payment/result?paymentId=${payment!.id}`,
+      returnUrl: `${env.APP_URL}/payment/result?paymentId=${payment.id}`,
     });
 
     return NextResponse.json(
-      { registrationId: reg.registration_id, code: reg.code, paymentId: payment!.id, redirectUrl: created.redirectUrl },
+      { registrationId: reg.registration_id, code: reg.code, paymentId: payment.id, redirectUrl: created.redirectUrl },
       { status: 201 },
     );
   } catch (err) {

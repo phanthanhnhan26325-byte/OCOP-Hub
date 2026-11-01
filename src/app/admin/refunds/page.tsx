@@ -8,16 +8,19 @@ export const dynamic = 'force-dynamic';
 export default async function AdminRefundsPage() {
   await requireRole('ADMIN');
   const supabase = await supabaseServer();
-  const [{ data: refunds }, { data: paidPayments }] = await Promise.all([
+  const [{ data: refunds, error: refundsError }, { data: paidPayments, error: paymentsError }] = await Promise.all([
     supabase.from('refunds').select('*').order('created_at', { ascending: false }).limit(100),
-    supabase.from('payments').select('id, amount, refunded_amount, purpose, status').eq('status', 'PAID').order('created_at', { ascending: false }).limit(50),
+    supabase.from('payments').select('id, amount, refunded_amount, purpose, status').in('status', ['PAID', 'PARTIALLY_REFUNDED']).order('created_at', { ascending: false }).limit(50),
   ]);
+  if (refundsError) throw new Error(refundsError.message);
+  if (paymentsError) throw new Error(paymentsError.message);
 
   return (
     <div>
       <h1 className="text-2xl font-bold">Quản lý hủy/trả & hoàn tiền</h1>
       <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="font-semibold">Ghi nhận hoàn tiền (chỉ khi có xác nhận hoàn thực tế)</h2>
+        <h2 className="font-semibold">Ghi nhận hoàn tiền thủ công</h2>
+        <p className="mt-1 text-sm text-slate-500">Chuyển tiền ngoài hệ thống trước, sau đó nhập mã tham chiếu ngân hàng để ghi sổ. Trang này không kết nối cổng hoàn tiền.</p>
         <RefundForm payments={paidPayments ?? []} />
       </div>
       <h2 className="mt-8 font-semibold">Lịch sử hoàn tiền</h2>

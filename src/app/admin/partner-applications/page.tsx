@@ -8,11 +8,12 @@ export const dynamic = 'force-dynamic';
 export default async function AdminApplicationsPage() {
   await requireRole('ADMIN');
   const supabase = await supabaseServer();
-  const { data: apps } = await supabase
+  const { data: apps, error } = await supabase
     .from('partner_applications')
     .select('id, note, status, created_at, partner_id, partner_profiles(business_name, business_license_no, address, contact_email, contact_phone)')
     .eq('status', 'PENDING')
     .order('created_at');
+  if (error) throw new Error(error.message);
 
   return (
     <div>

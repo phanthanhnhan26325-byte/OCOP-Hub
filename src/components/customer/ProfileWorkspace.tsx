@@ -164,11 +164,13 @@ function Dialog({ title, onClose, children, wide = false }: { title: string; onC
 
 export function ProfileWorkspace({
   profile: initialProfile,
+  addressUnavailable = false,
   roles,
   orders,
   registrations,
 }: {
   profile: Profile;
+  addressUnavailable?: boolean;
   roles: string[];
   orders: ProfileOrder[];
   registrations: ProfileRegistration[];
@@ -190,7 +192,9 @@ export function ProfileWorkspace({
   const [changing, setChanging] = useState(false);
   const [formError, setFormError] = useState('');
   const [passwordError, setPasswordError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState(addressUnavailable
+    ? 'Cơ sở dữ liệu chưa có cột users.address. Địa chỉ sẽ chỉ được lưu sau khi áp dụng migration 0004_customer_profile.sql.'
+    : '');
   const [editValues, setEditValues] = useState({
     fullName: profile.fullName,
     email: profile.email,
@@ -223,10 +227,12 @@ export function ProfileWorkspace({
         ...current,
         fullName: editValues.fullName.trim(),
         phone: editValues.phone.trim(),
-        address: editValues.address.trim(),
+        address: result.addressSaved === false ? current.address : editValues.address.trim(),
       }));
       setEditing(false);
-      setNotice(result.emailConfirmationRequired
+      setNotice(result.addressSaved === false
+        ? 'Đã lưu các thông tin khác, nhưng địa chỉ chưa được lưu vì cơ sở dữ liệu thiếu cột users.address. Vui lòng áp dụng migration 0004_customer_profile.sql.'
+        : result.emailConfirmationRequired
         ? 'Thông tin đã lưu. Hãy xác nhận email mới trong hộp thư để hoàn tất thay đổi.'
         : 'Thông tin cá nhân đã được cập nhật.');
       router.refresh();
@@ -456,7 +462,7 @@ export function ProfileWorkspace({
           <div className="absolute bottom-0 left-0 h-1 w-full bg-[#e2c76c]" />
         </section>
 
-        {notice && <div role="status" className="mt-4 flex items-start justify-between gap-3 rounded-lg border border-[#c8ddca] bg-[#edf6ee] px-4 py-3 text-sm text-[#275d3d]">
+        {notice && <div role="status" className={`mt-4 flex items-start justify-between gap-3 rounded-lg border px-4 py-3 text-sm ${addressUnavailable ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-[#c8ddca] bg-[#edf6ee] text-[#275d3d]'}`}>
           <span>{notice}</span>
           <button type="button" onClick={() => setNotice('')} aria-label="Đóng thông báo" className="text-lg leading-none">×</button>
         </div>}

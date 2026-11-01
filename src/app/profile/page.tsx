@@ -9,22 +9,45 @@ export const metadata = { title: 'Hồ sơ của tôi — OCOP Hub' };
 type ProfileRow = {
   full_name: string | null;
   phone: string | null;
-  address: string | null;
+  address?: string | null;
   avatar_url: string | null;
   created_at: string;
 };
+
+function isMissingAddressColumn(error: { code?: string; message?: string }) {
+  const message = error.message?.toLowerCase() ?? '';
+  return (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    (message.includes('address') && (message.includes('does not exist') || message.includes('schema cache')))
+  );
+}
 
 export default async function ProfilePage() {
   const user = await getSessionUser();
   if (!user) redirect('/login?next=/profile');
 
   const supabase = await supabaseServer();
-  const [{ data: profileData, error: profileError }, { data: orderData }, { data: registrationData }] = await Promise.all([
-    supabase
+  const readProfile = async () => {
+    let result = await supabase
       .from('users')
       .select('full_name, phone, address, avatar_url, created_at')
       .eq('id', user.id)
-      .maybeSingle(),
+      .maybeSingle();
+    let addressUnavailable = false;
+    if (result.error && isMissingAddressColumn(result.error)) {
+      result = await supabase
+        .from('users')
+        .select('full_name, phone, avatar_url, created_at')
+        .eq('id', user.id)
+        .maybeSingle();
+      addressUnavailable = !result.error;
+    }
+    return { ...result, addressUnavailable };
+  };
+
+  const [profileResult, { data: orderData }, { data: registrationData }] = await Promise.all([
+    readProfile(),
     supabase
       .from('orders')
       .select('id, code, status, total, placed_at, shipping_address, orders_child:orders!parent_order_id(id, code, status, total, partner_id, partner_profiles(business_name), order_items(id, product_name, product_image, qty, unit_price, line_total), order_status_history(to_status, created_at, reason))')
@@ -38,9 +61,9 @@ export default async function ProfilePage() {
       .order('created_at', { ascending: false }),
   ]);
 
-  if (profileError) console.error('[profile:read]', profileError.message);
+  if (profileResult.error) console.error('[profile:read]', profileResult.error.message);
 
-  const profile = profileData as ProfileRow | null;
+  const profile = profileResult.data as ProfileRow | null;
   return (
     <ProfileWorkspace
       profile={{
@@ -51,6 +74,7 @@ export default async function ProfilePage() {
         avatarUrl: profile?.avatar_url ?? '',
         createdAt: profile?.created_at ?? '',
       }}
+      addressUnavailable={profileResult.addressUnavailable}
       roles={user.roles}
       orders={(orderData ?? []) as unknown as ProfileOrder[]}
       registrations={(registrationData ?? []) as unknown as ProfileRegistration[]}

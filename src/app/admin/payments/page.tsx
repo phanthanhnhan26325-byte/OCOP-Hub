@@ -8,11 +8,12 @@ export const dynamic = 'force-dynamic';
 export default async function AdminPaymentsPage() {
   await requireRole('ADMIN');
   const supabase = await supabaseServer();
-  const { data: payments } = await supabase
+  const { data: payments, error } = await supabase
     .from('payments')
     .select('id, purpose, amount, status, provider, business_sync_status, expires_at, created_at')
     .order('created_at', { ascending: false })
     .limit(100);
+  if (error) throw new Error(error.message);
 
   return (
     <div>

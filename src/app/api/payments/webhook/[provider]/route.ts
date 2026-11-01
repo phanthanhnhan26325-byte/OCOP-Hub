@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProvider } from '@/modules/payments/providers';
-import { supabaseServer } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { handleApiError } from '@/lib/rbac';
 
 /**
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
     const verified = await provider.verifyWebhook(req.headers, rawBody);
 
     // Ghi nhận event kể cả khi signature sai (để audit), nhưng không apply
-    const supabase = await supabaseServer();
+    const supabase = supabaseAdmin();
     if (!verified.valid) {
       await supabase.from('payment_events').upsert(
         {

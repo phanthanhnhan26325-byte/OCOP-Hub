@@ -21,6 +21,13 @@ export default async function PartnerDashboardPage() {
     .select('id, status, total')
     .eq('partner_id', user.id)
     .eq('order_level', 'CHILD');
+  const { data: rejectedProducts, error: rejectedProductsError } = await supabase
+    .from('products')
+    .select('id, name, reject_reason, updated_at')
+    .eq('partner_id', user.id)
+    .eq('status', 'REJECTED')
+    .order('updated_at', { ascending: false });
+  if (rejectedProductsError) throw new Error(rejectedProductsError.message);
   const pending = (stats ?? []).filter((s) => s.status === 'PENDING_ACCEPTANCE').length;
   const revenue = (stats ?? []).filter((s) => ['PAID', 'PENDING_ACCEPTANCE', 'ACCEPTED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'COMPLETED'].includes(s.status))
     .reduce((sum, s) => sum + Number(s.total ?? 0), 0);
@@ -43,6 +50,44 @@ export default async function PartnerDashboardPage() {
           <>Bạn cần gửi hồ sơ đăng ký bán hàng trước khi sử dụng chức năng bán hàng.</>
         )}
       </div>
+
+      {(rejectedProducts ?? []).length > 0 && (
+        <section className="mt-6 rounded-xl border border-red-200 bg-red-50/60 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="font-semibold text-red-800">Sản phẩm bị từ chối</h2>
+              <p className="mt-1 text-sm text-slate-600">Xem lý do để cập nhật và gửi lại sản phẩm.</p>
+            </div>
+            {approved && (
+              <Link href="/partner/products" className="text-sm font-medium text-emerald-800 hover:underline">
+                Quản lý sản phẩm →
+              </Link>
+            )}
+          </div>
+          <ul className="mt-4 divide-y divide-red-100">
+            {rejectedProducts?.map((product) => (
+              <li key={product.id} className="py-3 first:pt-0 last:pb-0">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-medium text-slate-800">{product.name}</p>
+                    <p className="mt-1 whitespace-pre-line text-sm text-red-700">
+                      Lý do: {product.reject_reason?.trim() || 'Chưa có lý do được ghi nhận.'}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Cập nhật {new Date(product.updated_at).toLocaleDateString('vi-VN')}
+                    </p>
+                  </div>
+                  {approved && (
+                    <Link href={`/partner/products#${product.id}`} className="text-sm text-emerald-800 hover:underline">
+                      Xem sản phẩm
+                    </Link>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {!approved && (
         <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">

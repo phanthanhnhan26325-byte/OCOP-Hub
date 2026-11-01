@@ -10,6 +10,15 @@ const profileSchema = z.object({
   address: z.string().trim().max(300, 'Địa chỉ quá dài'),
 });
 
+function isMissingAddressColumn(error: { code?: string; message?: string }) {
+  const message = error.message?.toLowerCase() ?? '';
+  return (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    (message.includes('address') && (message.includes('does not exist') || message.includes('schema cache')))
+  );
+}
+
 export async function PATCH(request: NextRequest) {
   try {
     const user = await requireAuth();
@@ -30,7 +39,8 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const { error } = await supabase
+    let addressSaved = true;
+    let { error } = await supabase
       .from('users')
       .update({
         full_name: parsed.data.fullName,
@@ -40,9 +50,21 @@ export async function PATCH(request: NextRequest) {
       })
       .eq('id', user.id);
 
+    if (error && isMissingAddressColumn(error)) {
+      addressSaved = false;
+      const fallback = await supabase
+        .from('users')
+        .update({
+          full_name: parsed.data.fullName,
+          phone: parsed.data.phone || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+      error = fallback.error;
+    }
     if (error) throw new Error(error.message);
 
-    return NextResponse.json({ ok: true, emailConfirmationRequired: emailChanged });
+    return NextResponse.json({ ok: true, emailConfirmationRequired: emailChanged, addressSaved });
   } catch (error) {
     return handleApiError(error);
   }
