@@ -95,17 +95,23 @@ export function CartView() {
   const grandTotal = groups.reduce((s, g) => s + g.subtotal, 0);
 
   async function updateQty(itemId: string, qty: number) {
-    await fetch('/api/cart', {
+    const res = await fetch('/api/cart', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ itemId, qty }),
     });
-    load();
+    if (res.ok) {
+      await load();
+      router.refresh();
+    }
   }
 
   async function removeItem(itemId: string) {
-    await fetch(`/api/cart?itemId=${itemId}`, { method: 'DELETE' });
-    load();
+    const res = await fetch(`/api/cart?itemId=${itemId}`, { method: 'DELETE' });
+    if (res.ok) {
+      await load();
+      router.refresh();
+    }
   }
 
   if (loading) return <p className="px-4 py-10 text-slate-500">Đang tải giỏ hàng...</p>;

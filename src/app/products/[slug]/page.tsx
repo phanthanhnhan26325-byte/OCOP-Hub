@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { supabaseServer } from '@/lib/supabase/server';
-import { formatVnd } from '@/lib/money';
 import { AddToCartButton } from '@/components/customer/AddToCartButton';
+import { productDescription } from '@/lib/product-description';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +33,7 @@ export default async function ProductDetailPage({ params }: PageProps<'/products
   const remaining = avail ? avail.available_qty - avail.reserved_qty : 0;
   const partner = product.partner_profiles as unknown as { business_name: string; address: string; contact_phone: string } | null;
   const classification = product.product_categories?.[0]?.name ?? product.classifications[0];
+  const description = productDescription(product.short_description, product.description);
 
   return (
     <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 md:grid-cols-2">
@@ -44,20 +45,15 @@ export default async function ProductDetailPage({ params }: PageProps<'/products
           className="h-full w-full object-cover"
         />
       </div>
-      <div>
+      <div className="min-w-0">
         <p className="text-xs uppercase tracking-wide text-emerald-700">OCOP · {partner?.business_name}</p>
         <h1 className="mt-1 text-2xl font-bold">{product.name}</h1>
-        <p className="mt-2 text-slate-600">{product.short_description}</p>
         {classification && (
           <span className="mt-3 inline-block rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800">
             {classification}
           </span>
         )}
-        <p className="mt-4 text-3xl font-bold text-emerald-700">
-          {product.product_variants.length
-            ? `Từ ${formatVnd(Math.min(...product.product_variants.map((variant) => Number(variant.price))))}`
-            : formatVnd(product.price)}
-        </p>
+        <AddToCartButton key={product.id} productId={product.id} price={product.price} max={Math.max(remaining, 1)} variants={product.product_variants} canPurchase={remaining > 0 || avail?.supply_status === 'PRE_ORDER'}>
 
         <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm">
           <p>
@@ -73,23 +69,17 @@ export default async function ProductDetailPage({ params }: PageProps<'/products
             )}
           </p>
           <p className="mt-1 text-slate-500">Địa chỉ: {partner?.address ?? '—'} · SĐT: {partner?.contact_phone ?? '—'}</p>
+          {description && (
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <h2 className="font-semibold text-slate-800">Thông tin sản phẩm</h2>
+              <p className="mt-1 break-words leading-relaxed text-slate-600">{description}</p>
+            </div>
+          )}
           {product.ocop_cert_no && <p className="mt-1 text-slate-500">Chứng nhận OCOP: {product.ocop_cert_no}</p>}
         </div>
 
-        <div className="mt-6">
-          {remaining > 0 || avail?.supply_status === 'PRE_ORDER' ? (
-            <AddToCartButton productId={product.id} max={Math.max(remaining, 1)} variants={product.product_variants} />
-          ) : (
-            <button disabled className="w-full rounded-lg bg-slate-200 py-3 text-slate-500">Hết hàng</button>
-          )}
-        </div>
+        </AddToCartButton>
 
-        {product.description && (
-          <div className="mt-8">
-            <h2 className="font-semibold">Mô tả sản phẩm</h2>
-            <p className="mt-2 whitespace-pre-line text-slate-700">{product.description}</p>
-          </div>
-        )}
       </div>
     </div>
   );
