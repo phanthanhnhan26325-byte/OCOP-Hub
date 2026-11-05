@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { DeleteProductCategoryButton } from '@/components/admin/DeleteProductCategoryButton';
 
 interface Category {
   id: string;
@@ -177,7 +178,8 @@ export function ProductCategoryManager({ categories }: { categories: Category[] 
                         {category.status === 'ACTIVE' ? 'Đang hoạt động' : 'Ngừng hoạt động'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -189,6 +191,11 @@ export function ProductCategoryManager({ categories }: { categories: Category[] 
                       >
                         Chỉnh sửa
                       </button>
+                      <DeleteProductCategoryButton
+                        categoryId={category.id}
+                        categoryName={category.name}
+                      />
+                      </div>
                     </td>
                   </>
                 )}

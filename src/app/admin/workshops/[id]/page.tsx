@@ -85,10 +85,13 @@ export default async function AdminWorkshopDetailPage({
     (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
   );
   const registrations = sessions.flatMap((session) => session.workshop_registrations ?? []);
+  const activeSessions = sessions.filter((session) => session.status !== 'CANCELLED');
   const confirmedRegistrations = registrations.filter(
     (registration) => registration.status === 'CONFIRMED' || registration.status === 'COMPLETED',
   );
-  const totalSold = confirmedRegistrations.length;
+  const totalCapacity = activeSessions.reduce((total, session) => total + session.capacity, 0);
+  const totalRemaining = activeSessions.reduce((total, session) => total + session.remaining_seats, 0);
+  const totalBooked = totalCapacity - totalRemaining;
   const totalRevenue = confirmedRegistrations.reduce((total, registration) => total + Number(registration.amount), 0);
   const now = new Date().getTime();
 
@@ -99,19 +102,36 @@ export default async function AdminWorkshopDetailPage({
       </Link>
 
       <article className="mt-4 rounded-xl border border-slate-200 bg-white p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold">{workshop.title}</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Doanh nghiệp: <Link href={`/admin/users/${workshop.partner_id}`} className="font-medium text-emerald-800 hover:underline">
-                {partner?.business_name ?? 'Chưa có thông tin'}
+        <div className="flex flex-col gap-5 sm:flex-row">
+          {workshop.cover_image && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={workshop.cover_image}
+              alt={workshop.title}
+              className="h-52 w-full rounded-lg object-cover sm:w-72"
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <h1 className="text-2xl font-bold">{workshop.title}</h1>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium">
+                {workshopStatusLabel(workshop.status)}
+              </span>
+            </div>
+            <p className="mt-2 text-sm text-slate-500">
+              Đơn vị tổ chức:{' '}
+              <Link href={`/admin/users/${workshop.partner_id}`} className="font-medium text-emerald-800 hover:underline">
+                {partner?.business_name ?? 'Chưa có thông tin doanh nghiệp'}
               </Link>
             </p>
             <p className="mt-1 text-xs text-slate-400">Mã workshop: {workshop.id} · /{workshop.slug}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Tạo {formatDate(workshop.created_at)} · Cập nhật {formatDate(workshop.updated_at)}
+            </p>
+            {workshop.description && (
+              <p className="mt-4 whitespace-pre-line text-sm text-slate-600">{workshop.description}</p>
+            )}
           </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium">
-            {workshopStatusLabel(workshop.status)}
-          </span>
         </div>
         {workshop.description && <p className="mt-4 whitespace-pre-line text-sm text-slate-600">{workshop.description}</p>}
         {workshop.experience_content && <section className="mt-5"><h2 className="font-semibold">Nội dung trải nghiệm</h2><p className="mt-2 whitespace-pre-line text-sm text-slate-600">{workshop.experience_content}</p></section>}
@@ -128,10 +148,12 @@ export default async function AdminWorkshopDetailPage({
         )}
       </article>
 
-      <section aria-label="Tổng quan workshop" className="mt-5 grid gap-3 sm:grid-cols-3">
+      <section aria-label="Tổng quan workshop" className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
           { label: 'Số lịch tổ chức', value: sessions.length },
-          { label: 'Vé đã xác nhận', value: totalSold },
+          { label: 'Tổng số vé', value: totalCapacity },
+          { label: 'Vé đã đặt', value: totalBooked },
+          { label: 'Vé còn', value: totalRemaining },
           { label: 'Doanh thu đăng ký đã xác nhận', value: formatVnd(totalRevenue) },
         ].map((item) => (
           <div key={item.label} className="rounded-xl border border-slate-200 bg-white p-4">
@@ -143,42 +165,51 @@ export default async function AdminWorkshopDetailPage({
 
       <section className="mt-8">
         <h2 className="text-lg font-semibold">Lịch tổ chức và tình hình vé</h2>
-        <div className="mt-3 space-y-3">
+        <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <table className="w-full min-w-[1050px] text-left text-sm">
+            <thead className="border-b border-slate-100 text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Ngày, giờ</th>
+                <th className="px-4 py-3">Địa điểm</th>
+                <th className="px-4 py-3">Giá vé</th>
+                <th className="px-4 py-3">Số lượng vé</th>
+                <th className="px-4 py-3">Vé đã đặt</th>
+                <th className="px-4 py-3">Vé còn</th>
+                <th className="px-4 py-3">Trạng thái / đăng ký</th>
+              </tr>
+            </thead>
+            <tbody>
           {sessions.map((session) => {
-            const confirmed = (session.workshop_registrations ?? []).filter(
-              (registration) => registration.status === 'CONFIRMED' || registration.status === 'COMPLETED',
-            ).length;
             const available = Math.max(session.remaining_seats, 0);
+            const booked = Math.max(session.capacity - available, 0);
             return (
-              <article key={session.id} className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <h3 className="font-semibold">{formatDate(session.starts_at)} – {formatDate(session.ends_at)}</h3>
-                    <p className="mt-1 text-sm text-slate-500">{session.location}</p>
-                  </div>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium">
+              <tr key={session.id} className="border-b border-slate-50 align-top hover:bg-slate-50/70">
+                <td className="whitespace-nowrap px-4 py-3">
+                  <p>{formatDate(session.starts_at)}</p>
+                  <p className="mt-1 text-xs text-slate-500">đến {formatDate(session.ends_at)}</p>
+                </td>
+                <td className="px-4 py-3">{session.location}</td>
+                <td className="whitespace-nowrap px-4 py-3">{formatVnd(session.fee)}</td>
+                <td className="px-4 py-3">{session.capacity}</td>
+                <td className="px-4 py-3">{booked}</td>
+                <td className="px-4 py-3 font-medium">{available}</td>
+                <td className="px-4 py-3">
+                  <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium">
                     {sessionStatusLabel(session, now)}
                   </span>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-600">
-                  <span>Giá vé: {formatVnd(session.fee)}</span>
-                  <span>Đã bán: {confirmed}/{session.capacity}</span>
-                  <span>Còn trống: {available}</span>
-                  <span>Trạng thái phiên: {session.status}</span>
-                </div>
-                {(session.status === 'OPEN' || session.status === 'CLOSED') && (
-                  <div className="mt-3">
+                  {(session.status === 'OPEN' || session.status === 'CLOSED') && (
+                    <div className="mt-2">
                     <WorkshopSessionControls
                       sessionId={session.id}
                       status={session.status}
                       workshopStatus={workshop.status}
                     />
-                  </div>
-                )}
-                {(session.workshop_registrations ?? []).length > 0 && (
-                  <details className="mt-3 border-t border-slate-100 pt-3">
+                    </div>
+                  )}
+                  {(session.workshop_registrations ?? []).length > 0 && (
+                    <details className="mt-2">
                     <summary className="cursor-pointer text-xs font-medium text-emerald-800">
-                      Danh sách đăng ký ({session.workshop_registrations?.length})
+                      Đăng ký ({session.workshop_registrations?.length})
                     </summary>
                     <ul className="mt-2 space-y-1 text-xs text-slate-600">
                       {(session.workshop_registrations ?? []).map((registration) => (
@@ -188,16 +219,21 @@ export default async function AdminWorkshopDetailPage({
                         </li>
                       ))}
                     </ul>
-                  </details>
-                )}
-              </article>
+                    </details>
+                  )}
+                </td>
+              </tr>
             );
           })}
-          {sessions.length === 0 && (
-            <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-500">
-              Workshop chưa có lịch tổ chức.
-            </p>
-          )}
+              {sessions.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                    Workshop chưa có lịch tổ chức.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
     </div>

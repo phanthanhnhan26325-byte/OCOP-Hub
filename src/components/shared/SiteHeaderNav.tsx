@@ -19,9 +19,11 @@ interface NotificationItem {
 export function SiteHeaderNav({
   user,
   notifications,
+  cartQuantity,
 }: {
   user: { email: string; roles: string[] } | null;
   notifications: NotificationItem[];
+  cartQuantity: number;
 }) {
   const pathname = usePathname();
   const avatarText = user?.roles.includes('ADMIN') ? 'A' : user?.roles.includes('PARTNER') ? 'P' : 'U';
@@ -78,12 +80,16 @@ export function SiteHeaderNav({
           {user ? (
             <>
               <NotificationBell initialNotifications={notifications} roles={user.roles} />
-              <Link href="/cart" aria-label="Giỏ hàng" className="flex h-11 w-11 items-center justify-center rounded-full border border-[#d7d0b8] bg-white/60 text-[#1d4d38] transition hover:bg-white">
+              <Link href="/cart" aria-label={`Giỏ hàng, ${cartQuantity} sản phẩm`} title={`Giỏ hàng: ${cartQuantity} sản phẩm`} className="relative flex h-11 w-11 items-center justify-center rounded-full border border-[#d7d0b8] bg-white/60 text-[#1d4d38] transition hover:bg-white">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
                   <circle cx="9" cy="19" r="1.5" />
                   <circle cx="17" cy="19" r="1.5" />
                   <path d="M3 4h2l2.4 9.2a1 1 0 0 0 1 .8h8.9a1 1 0 0 0 1-.8L19 7H7" />
                 </svg>
+                <span aria-live="polite" aria-atomic="true" className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1d4d38] px-1 text-[10px] font-bold leading-none text-white ring-2 ring-[#f7f4ec]">
+                  <span aria-hidden="true">{cartQuantity > 99 ? '99+' : cartQuantity}</span>
+                  <span className="sr-only">{cartQuantity} sản phẩm trong giỏ hàng</span>
+                </span>
               </Link>
 
               <Link href="/profile" aria-label="Hồ sơ người dùng" title="Hồ sơ của tôi" className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-[#d7d0b8] bg-gradient-to-br text-xs font-bold text-white shadow-sm shadow-[#1d4d38]/10 transition hover:opacity-95">

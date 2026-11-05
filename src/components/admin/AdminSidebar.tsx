@@ -84,8 +84,12 @@ const groups: SidebarGroup[] = [
     label: 'QUẢN LÝ TÀI CHÍNH',
     icon: 'finance',
     links: [
-      { href: '/admin/settlements', label: 'Đối soát & chi trả', icon: 'settlement' },
-      { href: '/admin/fees', label: 'Cơ cấu chi phí', icon: 'fees' },
+      { href: '/admin/finance', label: 'Tổng quan tài chính', icon: 'finance' },
+      { href: '/admin/finance/revenue', label: 'Doanh thu & lợi nhuận', icon: 'fees' },
+      { href: '/admin/finance/reconciliation', label: 'Đối soát doanh nghiệp', icon: 'settlement' },
+      { href: '/admin/finance/payouts', label: 'Quản lý chi trả', icon: 'payment' },
+      { href: '/admin/finance/transactions', label: 'Lịch sử giao dịch', icon: 'audit' },
+      { href: '/admin/finance/settings', label: 'Cấu hình tài chính', icon: 'permissions' },
     ],
   },
   {
@@ -157,7 +161,7 @@ function getLinkState(
 
   if (nestedPath) {
     const hasContext = expectedParams.has('role') || expectedParams.has('view');
-    return { active: !hasContext, expanded: true };
+    return { active: !hasContext && targetPath !== '/admin/finance', expanded: true };
   }
 
   const hasContext = expectedParams.has('role') || expectedParams.has('view');

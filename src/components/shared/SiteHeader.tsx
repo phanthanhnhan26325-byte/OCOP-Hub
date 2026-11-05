@@ -2,6 +2,7 @@ export async function SiteHeader() {
   const { getSessionUser } = await import('@/lib/rbac');
   const { SiteHeaderNav } = await import('@/components/shared/SiteHeaderNav');
   const user = await getSessionUser();
+  let cartQuantity = 0;
   let notifications: {
     id: string;
     type: string;
@@ -24,7 +25,14 @@ export async function SiteHeader() {
       .limit(10);
     if (error) throw new Error(error.message);
     notifications = data;
+    const { data: cart, error: cartError } = await supabase
+      .from('carts')
+      .select('id, cart_items(product_id)')
+      .eq('customer_id', user.id)
+      .maybeSingle();
+    if (cartError) throw new Error(cartError.message);
+    cartQuantity = new Set((cart?.cart_items ?? []).map((item) => item.product_id)).size;
   }
 
-  return <SiteHeaderNav user={user} notifications={notifications} />;
+  return <SiteHeaderNav user={user} notifications={notifications} cartQuantity={cartQuantity} />;
 }

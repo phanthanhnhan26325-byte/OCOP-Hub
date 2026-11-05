@@ -25,21 +25,33 @@ async function main() {
   if (error && !error.message.includes('already')) {
     throw error;
   }
+
   const userId = created?.user?.id;
   if (!userId) {
-    const { data: list } = await admin.auth.admin.listUsers();
+    const { data: list, error: listError } = await admin.auth.admin.listUsers();
+    if (listError) throw listError;
     const found = list?.users.find((u) => u.email === email);
     if (!found) throw new Error('Cannot find/create admin user');
-    await admin.from('user_roles').upsert({ user_id: found.id, role: 'ADMIN' }, { onConflict: 'user_id,role' });
+    await ensureAdminRole(found.id);
     console.log('Admin already exists, role ensured:', found.id);
-    return;
+  } else {
+    await ensureAdminRole(userId);
+    console.log('Admin seeded:', userId, email);
   }
-  // Trigger đã tạo CUSTOMER role mặc định → thêm ADMIN
-  const { error: roleErr } = await admin
-    .from('user_roles')
-    .upsert({ user_id: userId, role: 'ADMIN' }, { onConflict: 'user_id,role' });
-  if (roleErr) throw roleErr;
-  console.log('Admin seeded:', userId, email);
+
+  async function ensureAdminRole(id) {
+    const { error: upsertError } = await admin
+      .from('user_roles')
+      .upsert({ user_id: id, role: 'ADMIN' }, { onConflict: 'user_id,role' });
+    if (upsertError) throw upsertError;
+
+    const { error: cleanupError } = await admin
+      .from('user_roles')
+      .delete()
+      .eq('user_id', id)
+      .neq('role', 'ADMIN');
+    if (cleanupError) throw cleanupError;
+  }
 }
 
 main().catch((e) => {
