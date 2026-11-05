@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { supabaseServer } from '@/lib/supabase/server';
 import { formatVnd } from '@/lib/money';
 
@@ -59,15 +60,17 @@ export default async function HomePage() {
   return (
     <div className="bg-[#f7f4ec] text-slate-800">
       <section className="mx-auto max-w-7xl px-4 pb-6 pt-10 lg:px-6">
-        <div className="rounded-[2rem] border border-[#d7d0b8] bg-[#f2ead4] px-5 py-6 shadow-[0_12px_30px_rgba(25,58,39,0.08)] md:px-8 md:py-8 lg:px-10">
-          <div className="grid items-center gap-8 lg:grid-cols-[1.08fr_0.92fr]">
-            <div className="space-y-8">
+        <div className="relative isolate overflow-hidden rounded-[2rem] border border-[#d7d0b8] px-5 py-8 shadow-[0_12px_30px_rgba(25,58,39,0.08)] md:px-8 md:py-10 lg:px-10 lg:py-12">
+          <Image src="/images/home-pottery-background.png" alt="" fill preload sizes="(max-width: 1280px) 100vw, 1280px" className="-z-20 object-cover object-center" />
+          <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(250,249,242,0.97)_0%,rgba(250,249,242,0.92)_42%,rgba(250,249,242,0.35)_72%,rgba(250,249,242,0.12)_100%)]" />
+          <div className="grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:gap-12">
+            <div className="min-w-0 space-y-7">
               <div className="inline-flex items-center rounded-full border border-[#b9b39a] bg-[#f9f5eb] px-3 py-1 text-sm font-medium text-[#2f5c3a]">
                 Sản vật Việt · Trải nghiệm thật
               </div>
 
               <div className="space-y-4">
-                <h1 className="font-[Georgia,serif] text-5xl leading-[0.92] tracking-[-0.06em] text-[#1d4d38] md:text-6xl lg:text-[6rem]">
+                <h1 className="font-serif text-[clamp(2rem,4.5vw,3.75rem)] font-semibold leading-[1.25] tracking-normal text-[#1d4d38]">
                   Mang tinh hoa
                   <span className="block text-[#0e5740]">địa phương đến</span>
                   <span className="block text-[#1d4d38]">gần bạn.</span>
@@ -82,21 +85,22 @@ export default async function HomePage() {
                 <Link href="/products" className="rounded-2xl bg-[#1d4d38] px-6 py-4 text-center text-lg font-semibold text-white shadow-lg shadow-[#123b2d]/20 transition hover:bg-[#173d30]">
                   Khám phá sản phẩm
                 </Link>
-                <Link href="/workshops" className="rounded-2xl border border-[#244d3e] bg-transparent px-6 py-4 text-center text-lg font-semibold text-[#1d4d38] transition hover:bg-white/40">
+                <Link href="/workshops" className="rounded-2xl border border-[#244d3e] bg-white/75 px-6 py-4 text-center text-lg font-semibold text-[#1d4d38] transition hover:bg-white">
                   Khám phá workshop
                 </Link>
               </div>
             </div>
 
             <div className="relative flex justify-center lg:justify-end">
-              <div className="absolute inset-0 -z-10 rounded-[30%] bg-[radial-gradient(circle,_rgba(255,255,255,0.8),_rgba(255,255,255,0)_70%)] blur-2xl" />
-              <div className="relative h-[440px] w-full max-w-[560px] overflow-hidden rounded-[2rem] border border-[#d7d0b8] bg-[#d7d0b8] shadow-[0_18px_35px_rgba(20,50,38,0.15)]">
-                <img
-                  src="https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=1200&q=80"
-                  alt="Farmers and OCOP products"
-                  className="h-full w-full object-cover"
+              <div className="relative aspect-square w-full max-w-[480px] overflow-hidden rounded-[2rem] border border-white/70 bg-white shadow-[0_18px_35px_rgba(20,50,38,0.2)]">
+                <Image
+                  src="/images/home-pottery-workshop.jpg"
+                  alt="Trải nghiệm làm gốm tại workshop"
+                  fill
+                  sizes="(max-width: 1023px) 90vw, 480px"
+                  className="object-cover object-[center_55%]"
                 />
-                <div className="absolute bottom-5 left-5 rounded-2xl border border-white/30 bg-white/80 px-4 py-3 shadow-lg backdrop-blur-sm">
+                <div className="absolute bottom-4 left-4 right-4 rounded-2xl border border-white/50 bg-white/90 px-4 py-3 shadow-lg backdrop-blur-sm">
                   <p className="text-xs uppercase tracking-[0.18em] text-[#2e5944]">Nguồn gốc rõ ràng</p>
                   <p className="mt-1 text-xl font-semibold text-[#1b4738]">Sản phẩm nông sản chính gốc</p>
                 </div>
@@ -156,7 +160,7 @@ export default async function HomePage() {
                     <span>Địa phương</span>
                   </div>
                   <h3 className="text-2xl font-semibold leading-tight text-[#173e2f]">{p.name}</h3>
-                  <p className="text-sm leading-6 text-[#45655a]">{p.short_description}</p>
+                  <p className="line-clamp-2 text-sm leading-6 text-[#45655a]">{p.short_description}</p>
                   <div className="flex items-center justify-between pt-2">
                     <span className="text-xl font-bold text-[#1d4d38]">{formatVnd(p.price)}</span>
                     <span className="rounded-full bg-[#eefaf2] px-3 py-1 text-sm font-medium text-[#26634b]">Mua ngay</span>

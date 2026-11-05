@@ -1,7 +1,9 @@
 import { supabaseServer } from '@/lib/supabase/server';
-import { formatDate, formatVnd } from '@/lib/money';
-import { RegisterSessionButton } from '@/components/customer/RegisterSessionButton';
+import { WorkshopSessionPicker } from '@/components/customer/WorkshopSessionPicker';
 import Link from 'next/link';
+import { CoffeeWorkshopArticle } from '@/components/customer/CoffeeWorkshopArticle';
+import { TeaWorkshopArticle } from '@/components/customer/TeaWorkshopArticle';
+import { TeaArtisanWorkshopArticle } from '@/components/customer/TeaArtisanWorkshopArticle';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,39 +30,29 @@ export default async function WorkshopDetailPage({ params }: PageProps<'/worksho
   const sessions = [...(ws.workshop_sessions ?? [])].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10">
+    <div className="mx-auto max-w-6xl px-4 py-10">
       {ws.cover_image && (
         <div className="mb-6 overflow-hidden rounded-2xl">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={ws.cover_image} alt={ws.title} className="h-64 w-full object-cover" />
         </div>
       )}
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-12">
+      <div className="min-w-0 lg:col-start-1 lg:row-start-1">
       <p className="text-xs uppercase tracking-wide text-emerald-700">Workshop · {partner?.business_name}</p>
       <h1 className="mt-1 text-3xl font-bold">{ws.title}</h1>
       <p className="mt-3 whitespace-pre-line text-slate-700">{ws.description}</p>
       <p className="mt-2 text-sm text-slate-500">Địa điểm: {partner?.address ?? '—'} · Liên hệ: {partner?.contact_phone ?? '—'}</p>
+      </div>
 
-      <h2 className="mt-10 text-xl font-semibold">Chọn buổi tham gia</h2>
-      <div className="mt-4 space-y-3">
-        {sessions.map((s) => {
-          const isFuture = new Date(s.starts_at) > new Date();
-          const canRegister = s.status === 'OPEN' && s.remaining_seats > 0 && isFuture;
-          return (
-            <div key={s.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-medium">{formatDate(s.starts_at)} — {formatDate(s.ends_at)}</p>
-                <p className="text-sm text-slate-600">Địa điểm: {s.location}</p>
-                <p className="text-sm">
-                  <span className="font-semibold text-emerald-700">{formatVnd(s.fee)}</span>
-                  <span className="ml-3 text-slate-500">
-                    Sức chứa {s.capacity} · còn {s.remaining_seats} chỗ
-                  </span>
-                </p>
-              </div>
-              <RegisterSessionButton sessionId={s.id} enabled={canRegister} />
-            </div>
-          );
-        })}
+      <div className="lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:h-full">
+        <WorkshopSessionPicker sessions={sessions.map((s) => ({ ...s, canRegister: s.status === 'OPEN' && s.remaining_seats > 0 && new Date(s.starts_at) > new Date() }))} />
+      </div>
+      <div className="min-w-0 lg:col-start-1 lg:row-start-2 [&>article]:mt-0">
+      {slug === 'tu-hat-en-ly-kham-pha-huong-vi-ca-phe' && <CoffeeWorkshopArticle />}
+      {slug === 'nghe-thuat-thuong-tra-viet' && <TeaWorkshopArticle />}
+      {slug === 'mot-ngay-lam-nghe-nhan-tra' && <TeaArtisanWorkshopArticle />}
+      </div>
       </div>
     </div>
   );
