@@ -39,7 +39,7 @@ interface ProductDetail {
   reject_reason: string | null;
   created_at: string;
   updated_at: string;
-  product_categories: { name: string }[] | null;
+  product_categories: { name: string } | { name: string }[] | null;
   product_variants: { id: string; label: string; price: number | string }[] | null;
   product_availability: {
     available_qty: number;
@@ -101,6 +101,7 @@ export default async function AdminProductDetailPage({
   const product = productData as unknown as ProductDetail;
   const availability = firstRelation(product.product_availability);
   const partner = firstRelation(product.partner_profiles);
+  const category = firstRelation(product.product_categories);
   const [
     { data: orderItemsData, error: orderItemsError },
     { data: historyData, error: historyError },
@@ -206,11 +207,11 @@ export default async function AdminProductDetailPage({
           )}
         </section>
 
-        {(product.product_categories?.length || product.classifications?.length || product.ocop_cert_no) ? (
+        {(category?.name || product.classifications?.length || product.ocop_cert_no) ? (
           <section className="mt-5 border-t border-slate-100 pt-4">
             <h2 className="font-semibold">Phân loại và chứng nhận</h2>
             <p className="mt-2 text-sm text-slate-600">
-              {product.product_categories?.map((category) => category.name).join(', ')}
+              {category?.name}
               {product.classifications?.length ? ` · ${product.classifications.join(' · ')}` : ''}
               {product.ocop_cert_no ? ` · OCOP: ${product.ocop_cert_no}` : ''}
             </p>

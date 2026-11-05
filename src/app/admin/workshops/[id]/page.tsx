@@ -14,6 +14,7 @@ interface WorkshopDetail {
   title: string;
   slug: string;
   description: string | null;
+  experience_content: string | null;
   cover_image: string | null;
   status: string;
   reject_reason: string | null;
@@ -71,7 +72,7 @@ export default async function AdminWorkshopDetailPage({
   const supabase = await supabaseServer();
   const { data, error } = await supabase
     .from('workshops')
-    .select('id, partner_id, title, slug, description, cover_image, status, reject_reason, created_at, updated_at, partner_profiles(business_name), workshop_sessions(id, starts_at, ends_at, location, fee, capacity, remaining_seats, status, workshop_registrations(id, code, status, amount, created_at))')
+    .select('id, partner_id, title, slug, description, experience_content, cover_image, status, reject_reason, created_at, updated_at, partner_profiles(business_name), workshop_sessions(id, starts_at, ends_at, location, fee, capacity, remaining_seats, status, workshop_registrations(id, code, status, amount, created_at))')
     .eq('id', id)
     .maybeSingle();
 
@@ -113,6 +114,7 @@ export default async function AdminWorkshopDetailPage({
           </span>
         </div>
         {workshop.description && <p className="mt-4 whitespace-pre-line text-sm text-slate-600">{workshop.description}</p>}
+        {workshop.experience_content && <section className="mt-5"><h2 className="font-semibold">Nội dung trải nghiệm</h2><p className="mt-2 whitespace-pre-line text-sm text-slate-600">{workshop.experience_content}</p></section>}
         <p className="mt-3 text-xs text-slate-500">
           Tạo {formatDate(workshop.created_at)} · Cập nhật {formatDate(workshop.updated_at)}
         </p>

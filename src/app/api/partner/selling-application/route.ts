@@ -37,8 +37,7 @@ export async function POST(req: NextRequest) {
     const supabase = supabaseAdmin();
     const d = body.data;
 
-    // Tạo hoặc cập nhật hồ sơ đối tác.
-    // Không sử dụng tax_code vì database không có cột này.
+    // Tạo hoặc cập nhật hồ sơ + đặt selling_status = PENDING
     const { data: profile, error: profileError } = await supabase
       .from('partner_profiles')
       .upsert(
@@ -58,11 +57,19 @@ export async function POST(req: NextRequest) {
       .select('user_id')
       .single();
 
-    if (profileError) {
-      throw new Error(profileError.message);
+    if (profileError || !profile) {
+      console.error('Saving partner profile failed:', JSON.stringify(profileError));
+      const code = profileError?.code ?? 'NO_PROFILE';
+      const explanation = code === '23505'
+        ? 'Số giấy phép kinh doanh đã được sử dụng.'
+        : code === '42501'
+          ? 'Supabase từ chối quyền lưu hồ sơ doanh nghiệp (RLS).'
+          : code === '23503'
+            ? 'Tài khoản chưa có hồ sơ người dùng tương ứng trong dữ liệu ứng dụng.'
+            : 'Cần kiểm tra chi tiết lỗi Supabase trong terminal chạy website.';
+      return NextResponse.json({ error: { code: 'PROFILE_SAVE_FAILED', message: `Không lưu được hồ sơ doanh nghiệp. ${explanation} Mã lỗi: ${code}.` } }, { status: 500 });
     }
 
-    // Tạo yêu cầu đăng ký đối tác.
     const { data: app, error: applicationError } = await supabase
       .from('partner_applications')
       .insert({
@@ -73,17 +80,12 @@ export async function POST(req: NextRequest) {
       .select('id')
       .single();
 
-    if (applicationError) {
-      throw new Error(applicationError.message);
+    if (applicationError || !app) {
+      console.error('Submitting partner application failed:', applicationError);
+      return NextResponse.json({ error: { code: 'APPLICATION_SAVE_FAILED', message: 'Đã lưu thông tin doanh nghiệp nhưng chưa gửi được hồ sơ duyệt. Vui lòng thử gửi lại; nếu vẫn lỗi, kiểm tra quyền bảng partner_applications.' } }, { status: 500 });
     }
 
-    return NextResponse.json(
-      {
-        profileId: profile?.user_id,
-        applicationId: app?.id,
-      },
-      { status: 201 },
-    );
+    return NextResponse.json({ profileId: profile.user_id, applicationId: app.id }, { status: 201 });
   } catch (err) {
     return handleApiError(err);
   }

@@ -13,23 +13,50 @@ const imageExtensions: Record<string, string> = {
   'image/png': 'png',
 };
 interface ProductVariantInput {
+  id?: string;
   label: string;
   price: number;
 }
 
-export function ProductForm({
-  categories,
-  partnerId,
-}: {
+export interface EditableProduct {
+  id: string;
+  name: string;
+  slug: string;
+  short_description: string | null;
+  description: string | null;
+  price: number;
+  category_id: string | null;
+  ocop_cert_no: string | null;
+  product_images: { url: string; sort_order: number }[];
+  product_variants: ProductVariantInput[];
+}
+
+interface ProductFormProps {
   categories: { id: string; name: string }[];
   partnerId: string;
-}) {
+  product?: EditableProduct;
+}
+
+export function ProductForm(props: ProductFormProps) {
+  // Initialize a fresh editing session when server data or the selected product changes.
+  // useState initial values alone do not replace a previously mounted blank form.
+  return <ProductFormFields key={JSON.stringify(props.product ?? null)} {...props} />;
+}
+
+function ProductFormFields({
+  categories,
+  partnerId,
+  product,
+}: ProductFormProps) {
   const [form, setForm] = useState({
-    name: '', slug: '', shortDescription: '', description: '', price: 0,
-    categoryId: '', ocopCertNo: '',
+    name: product?.name ?? '', slug: product?.slug ?? '',
+    shortDescription: product?.short_description ?? '', description: product?.description ?? '', price: product?.price ?? 0,
+    categoryId: product?.category_id ?? '', ocopCertNo: product?.ocop_cert_no ?? '',
   });
+  const [existingImages, setExistingImages] = useState(() =>
+    [...(product?.product_images ?? [])].sort((a, b) => a.sort_order - b.sort_order).map(image => image.url));
   const [images, setImages] = useState<File[]>([]);
-  const [variants, setVariants] = useState<ProductVariantInput[]>([]);
+  const [variants, setVariants] = useState<ProductVariantInput[]>(product?.product_variants ?? []);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -41,7 +68,7 @@ export function ProductForm({
   function selectImages(event: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(event.target.files ?? []);
     event.target.value = '';
-    if (selected.length > MAX_IMAGES) {
+    if (selected.length + existingImages.length > MAX_IMAGES) {
       setMsg(`Chỉ được tải tối đa ${MAX_IMAGES} ảnh.`);
       return;
     }
@@ -63,7 +90,18 @@ export function ProductForm({
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (images.length < 1 || images.length > MAX_IMAGES) {
+        if (product && images.length === 0 &&
+          form.name === product.name && (form.slug || autoSlug(form.name)) === product.slug &&
+          form.shortDescription === (product.short_description ?? '') && form.description === (product.description ?? '') &&
+          form.categoryId === (product.category_id ?? '') && form.ocopCertNo === (product.ocop_cert_no ?? '') &&
+          Number(variants.length ? Math.min(...variants.map(v => v.price)) : form.price) === Number(product.price) &&
+          JSON.stringify(existingImages) === JSON.stringify([...product.product_images].sort((a, b) => a.sort_order - b.sort_order).map(image => image.url)) &&
+          JSON.stringify(variants.map(v => ({ id: v.id, label: v.label.trim(), price: Number(v.price) })).sort((a, b) => (a.id ?? '').localeCompare(b.id ?? ''))) ===
+          JSON.stringify(product.product_variants.map(v => ({ id: v.id, label: v.label, price: Number(v.price) })).sort((a, b) => (a.id ?? '').localeCompare(b.id ?? '')))) {
+          setMsg('Bạn chưa thay đổi thông tin sản phẩm. Không cần gửi duyệt lại.');
+          return;
+        }
+        if (images.length + existingImages.length < 1 || images.length + existingImages.length > MAX_IMAGES) {
           setMsg(`Vui lòng chọn từ 1 đến ${MAX_IMAGES} ảnh sản phẩm.`);
           return;
         }
@@ -76,13 +114,12 @@ export function ProductForm({
           setMsg('Khối lượng của các biến thể không được trùng nhau.');
           return;
         }
-        const formElement = e.currentTarget;
         startTransition(async () => {
           const supabase = supabaseBrowser();
           const uploadedPaths: string[] = [];
           try {
-            setMsg('Đang tải ảnh sản phẩm lên...');
-            const imageUrls: string[] = [];
+            setMsg(images.length ? 'Đang tải ảnh sản phẩm lên...' : 'Đang lưu thông tin và gửi duyệt...');
+            const imageUrls: string[] = [...existingImages];
             for (const [index, image] of images.entries()) {
               const path = `${partnerId}/${crypto.randomUUID()}.${imageExtensions[image.type]}`;
               const { data: uploaded, error: uploadError } = await supabase.storage
@@ -96,8 +133,8 @@ export function ProductForm({
               setMsg(`Đang tải ảnh ${index + 1}/${images.length}...`);
             }
 
-            const res = await fetch('/api/partner/products', {
-              method: 'POST',
+            const res = await fetch(product ? `/api/partner/products/${product.id}` : '/api/partner/products', {
+              method: product ? 'PATCH' : 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 name: form.name,
@@ -106,18 +143,16 @@ export function ProductForm({
                 description: form.description,
                 price: variants.length ? Math.min(...variants.map((variant) => variant.price)) : form.price,
                 categoryId: form.categoryId || null,
-                variants: variants.map((variant) => ({ label: variant.label.trim(), price: variant.price })),
-                ocopCertNo: form.ocopCertNo || undefined,
+                variants: variants.map((variant) => ({ id: variant.id, label: variant.label.trim(), price: variant.price })),
+                ocopCertNo: form.ocopCertNo,
                 images: imageUrls,
+                ...(product ? { action: 'submit' } : {}),
               }),
             });
             const data = await res.json().catch(() => null);
-            if (!res.ok) throw new Error(data?.error?.message ?? 'Tạo sản phẩm thất bại');
+            if (!res.ok) throw new Error(data?.error?.message ?? 'Gửi duyệt sản phẩm thất bại');
             setMsg('Đã gửi sản phẩm thành công. Vui lòng chờ admin phê duyệt.');
-            setImages([]);
-            setVariants([]);
-            const fileInput = formElement.querySelector<HTMLInputElement>('input[type="file"]');
-            if (fileInput) fileInput.value = '';
+            router.push(`/partner/products#${product?.id ?? data.id}`);
             router.refresh();
           } catch (error) {
             if (uploadedPaths.length > 0) {
@@ -133,7 +168,6 @@ export function ProductForm({
       }}
       className="space-y-3"
     >
-      {msg && <p role="status" className="rounded-lg bg-slate-50 p-2 text-sm">{msg}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">Tên sản phẩm *
           <input required value={form.name}
@@ -216,9 +250,15 @@ export function ProductForm({
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           />
           <span className="mt-1 block text-xs text-slate-500">
-            {images.length}/{MAX_IMAGES} ảnh đã chọn · tối đa {MAX_IMAGE_SIZE / 1024 / 1024} MB mỗi ảnh
+            {existingImages.length + images.length}/{MAX_IMAGES} ảnh đã chọn · tối đa {MAX_IMAGE_SIZE / 1024 / 1024} MB mỗi ảnh
           </span>
         </label>
+        {existingImages.length > 0 && <ul className="flex flex-wrap gap-3 sm:col-span-2" aria-label="Ảnh sản phẩm hiện tại">
+          {existingImages.map((url, index) => <li key={`${url}-${index}`} className="space-y-1">
+            <img src={url} alt={`Ảnh sản phẩm ${index + 1}`} className="h-24 w-24 rounded-lg border object-cover" />
+            <button type="button" onClick={() => setExistingImages(current => current.filter((_, i) => i !== index))} className="text-xs text-red-600">Xóa ảnh {index + 1}</button>
+          </li>)}
+        </ul>}
         {images.length > 0 && (
           <ul className="flex flex-wrap gap-2 sm:col-span-2" aria-label="Ảnh đã chọn">
             {images.map((image, index) => (
@@ -249,8 +289,9 @@ export function ProductForm({
         <textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2" />
       </label>
+      {msg && <p role="status" aria-live="polite" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{msg}</p>}
       <button disabled={pending} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
-        {pending ? 'Đang gửi...' : 'Gửi sản phẩm chờ phê duyệt'}
+        {pending ? 'Đang gửi...' : product ? 'Lưu thay đổi và gửi duyệt lại' : 'Gửi sản phẩm chờ phê duyệt'}
       </button>
     </form>
   );

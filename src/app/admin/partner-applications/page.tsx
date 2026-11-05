@@ -13,7 +13,19 @@ export default async function AdminApplicationsPage() {
     .select('id, note, status, created_at, partner_id, partner_profiles(business_name, business_license_no, address, contact_email, contact_phone)')
     .eq('status', 'PENDING')
     .order('created_at');
-  if (error) throw new Error(error.message);
+
+
+  if (error) {
+    console.error('Loading partner applications failed:', error);
+    return (
+      <div>
+        <h1 className="text-2xl font-bold">Phê duyệt đăng ký bán hàng</h1>
+        <p role="alert" className="mt-6 rounded-lg bg-red-50 p-4 text-red-800">
+          Không tải được hồ sơ đăng ký bán hàng. Vui lòng kiểm tra cấu hình bảng, quan hệ và quyền truy cập Supabase. Chi tiết lỗi nằm trong terminal chạy website.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div>

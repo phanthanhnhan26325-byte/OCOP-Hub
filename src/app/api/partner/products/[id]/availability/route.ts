@@ -7,6 +7,10 @@ const availabilitySchema = z.object({
   availableQty: z.number().int().min(0),
   supplyStatus: z.enum(['IN_STOCK', 'OUT_OF_STOCK', 'PRE_ORDER']),
   preOrderEta: z.union([z.string().date(), z.literal('')]).optional(),
+}).refine(data => data.supplyStatus !== 'PRE_ORDER' || Boolean(data.preOrderEta), {
+  path: ['preOrderEta'], message: 'Vui lòng chọn ngày dự kiến có hàng khi nhận đặt trước.',
+}).refine(data => data.supplyStatus !== 'OUT_OF_STOCK' || data.availableQty === 0, {
+  path: ['availableQty'], message: 'Số lượng cung ứng phải bằng 0 khi hết hàng.',
 });
 
 export async function PATCH(

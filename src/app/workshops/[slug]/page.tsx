@@ -10,7 +10,7 @@ export default async function WorkshopDetailPage({ params }: PageProps<'/worksho
   const supabase = await supabaseServer();
   const { data: ws } = await supabase
     .from('workshops')
-    .select('id, title, description, cover_image, status, workshop_sessions(id, starts_at, ends_at, location, fee, capacity, remaining_seats, status), partner_profiles(business_name, address, contact_phone)')
+    .select('id, title, description, experience_content, cover_image, status, workshop_sessions(id, starts_at, ends_at, location, fee, capacity, remaining_seats, status), partner_profiles(business_name, address, contact_phone)')
     .eq('slug', slug)
     .eq('status', 'APPROVED')
     .single();
@@ -38,6 +38,7 @@ export default async function WorkshopDetailPage({ params }: PageProps<'/worksho
       <p className="text-xs uppercase tracking-wide text-emerald-700">Workshop · {partner?.business_name}</p>
       <h1 className="mt-1 text-3xl font-bold">{ws.title}</h1>
       <p className="mt-3 whitespace-pre-line text-slate-700">{ws.description}</p>
+      {ws.experience_content && <section className="mt-6"><h2 className="text-lg font-semibold">Nội dung trải nghiệm</h2><p className="mt-3 whitespace-pre-line text-slate-700">{ws.experience_content}</p></section>}
       <p className="mt-2 text-sm text-slate-500">Địa điểm: {partner?.address ?? '—'} · Liên hệ: {partner?.contact_phone ?? '—'}</p>
 
       <h2 className="mt-10 text-xl font-semibold">Chọn buổi tham gia</h2>
