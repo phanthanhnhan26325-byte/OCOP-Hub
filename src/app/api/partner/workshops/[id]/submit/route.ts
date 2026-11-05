@@ -17,7 +17,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     if (!ws || ws.partner_id !== user.id) {
       return NextResponse.json({ error: { code: 'FORBIDDEN', message: 'Workshop không thuộc doanh nghiệp của bạn' } }, { status: 403 });
     }
-    if (!['DRAFT', 'REJECTED'].includes(ws.status)) {
+    if (ws.status === 'REJECTED') {
+      return NextResponse.json({ error: { code: 'VALIDATION', message: 'Vui lòng chọn “Sửa và gửi lại” để bổ sung thông tin workshop.' } }, { status: 400 });
+    }
+    if (ws.status !== 'DRAFT') {
       return NextResponse.json({ error: { code: 'INVALID_STATE', message: 'Workshop không ở trạng thái có thể gửi duyệt' } }, { status: 409 });
     }
     const { data: updated, error } = await supabase

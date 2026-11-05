@@ -1,0 +1,9 @@
+.partner-portal { --partner-green: #195c46; }
+.partner-portal :is(h1,h2,h3,h4) { font-family: var(--font-be-vietnam-pro), sans-serif; }
+.partner-panel { border: 1px solid #dce6e1; border-radius: 18px; background: white; box-shadow: 0 3px 14px #193b3a03; }
+.partner-muted { color: #738787; }
+.partner-action { display: inline-flex; align-items: center; justify-content: center; gap: 10px; border: 1px solid #cdded5; border-radius: 11px; padding: 13px 19px; background: white; color: #195c46; font-size: 14px; font-weight: 600; transition: background .2s; }
+.partner-action:hover { background: #eaf4ee; }
+.partner-action-primary { background: #195c46; color: white; border-color: #195c46; box-shadow: 0 3px 7px #195c4620; }
+.partner-action-primary:hover { background: #124a37; }
+.partner-portal a:focus-visible,.partner-portal button:focus-visible,.partner-portal input:focus-visible { outline: 2px solid #c29832; outline-offset: 4px; }

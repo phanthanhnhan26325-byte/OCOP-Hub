@@ -15,7 +15,8 @@ const workshopSchema = z.object({
   title: z.string().min(5),
   slug: z.string().min(3).regex(/^[a-z0-9-]+$/),
   description: z.string().optional(),
-  coverImage: z.string().url().optional(),
+  coverImage: z.string().url().nullable().optional(),
+  experienceContent: z.string().optional(),
   action: z.enum(['save', 'submit']).default('save'),
   sessions: z.array(sessionSchema).min(1),
 });
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
         title: d.title,
         slug: d.slug,
         description: d.description ?? '',
+        experience_content: d.experienceContent ?? '',
         cover_image: d.coverImage ?? null,
         status: 'DRAFT',
       })
