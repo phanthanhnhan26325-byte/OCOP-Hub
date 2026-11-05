@@ -70,7 +70,7 @@ export function handleApiError(err: unknown) {
     const status =
       codeMatch[1] === 'FORBIDDEN' ? 403 :
       codeMatch[1] === 'NOT_FOUND' || codeMatch[1] === 'ORDER_NOT_FOUND' ? 404 :
-      codeMatch[1].includes('ALREADY') || codeMatch[1].includes('INSUFFICIENT') || codeMatch[1].includes('NO_SEATS') || codeMatch[1].includes('NOT_CANCELLABLE') || codeMatch[1] === 'INVALID_STATE' ? 409 : 400;
+      codeMatch[1].includes('ALREADY') || codeMatch[1].includes('INSUFFICIENT') || codeMatch[1].includes('NO_SEATS') || codeMatch[1].includes('NOT_CANCELLABLE') || codeMatch[1] === 'INVALID_STATE' || codeMatch[1] === 'AMOUNT_MISMATCH' ? 409 : 400;
     return NextResponse.json(
       { error: { code: codeMatch[1], message: codeMatch[2] ? `${codeMatch[1]}: ${codeMatch[2]}` : message } },
       { status },

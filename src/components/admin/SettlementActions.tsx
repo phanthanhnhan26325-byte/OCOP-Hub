@@ -7,8 +7,7 @@ interface PartnerRow { user_id: string; business_name: string }
 
 export function SettlementActions({ partners, statementId, net, status }: { partners?: PartnerRow[]; statementId?: string; net?: number; status?: string }) {
   const [partnerId, setPartnerId] = useState('');
-  const [start, setStart] = useState('');
-  const [end, setEnd] = useState('');
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [amount, setAmount] = useState(0);
   const [refNo, setRefNo] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
@@ -21,6 +20,7 @@ export function SettlementActions({ partners, statementId, net, status }: { part
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            if (!window.confirm('Xác nhận kết quả đối soát này? Kỳ đối soát sẽ được khóa và các khoản recover sẽ được áp dụng.')) return;
             startTransition(async () => {
               const res = await fetch(`/api/admin/settlements/${statementId}/confirm`, { method: 'POST' });
               const data = await res.json().catch(() => null);
@@ -45,6 +45,7 @@ export function SettlementActions({ partners, statementId, net, status }: { part
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          if (!window.confirm(`Xác nhận đã chuyển ${amount.toLocaleString('vi-VN')} đ và có mã tham chiếu ${refNo.trim()}?`)) return;
           startTransition(async () => {
             const res = await fetch(`/api/admin/settlements/${statementId}/payout`, {
               method: 'POST',
@@ -78,11 +79,15 @@ export function SettlementActions({ partners, statementId, net, status }: { part
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        if (!window.confirm(`Tạo kỳ đối soát tháng ${month} cho doanh nghiệp đã chọn? Snapshot sẽ không bị ghi đè khi tạo lại.`)) return;
         startTransition(async () => {
+          const [year, monthNumber] = month.split('-').map(Number);
+          const periodStart = `${month}-01`;
+          const periodEnd = new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
           const res = await fetch('/api/admin/settlements', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ partnerId, periodStart: start, periodEnd: end }),
+            body: JSON.stringify({ partnerId, periodStart, periodEnd }),
           });
           const data = await res.json().catch(() => null);
           setMsg(res.ok ? 'Đã tạo/nhận statement' : data?.error?.message ?? 'Thất bại');
@@ -97,11 +102,8 @@ export function SettlementActions({ partners, statementId, net, status }: { part
           {(partners ?? []).map((p) => <option key={p.user_id} value={p.user_id}>{p.business_name}</option>)}
         </select>
       </label>
-      <label className="text-xs">Từ ngày
-        <input type="date" required value={start} onChange={(e) => setStart(e.target.value)} className="mt-1 block rounded border border-slate-200 px-2 py-1.5" />
-      </label>
-      <label className="text-xs">Đến ngày
-        <input type="date" required value={end} onChange={(e) => setEnd(e.target.value)} className="mt-1 block rounded border border-slate-200 px-2 py-1.5" />
+      <label className="text-xs">Tháng đối soát
+        <input type="month" required value={month} onChange={(e) => setMonth(e.target.value)} className="mt-1 block rounded border border-slate-200 px-2 py-1.5" />
       </label>
       <button disabled={pending} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-700 disabled:opacity-50">
         {pending ? '...' : 'Tạo đối soát'}

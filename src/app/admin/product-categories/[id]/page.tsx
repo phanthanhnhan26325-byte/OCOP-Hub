@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/rbac';
 import { supabaseServer } from '@/lib/supabase/server';
 import { formatDate, formatVnd } from '@/lib/money';
+import { DeleteProductCategoryButton } from '@/components/admin/DeleteProductCategoryButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +43,7 @@ export default async function AdminCategoryProductsPage({
   const supabase = await supabaseServer();
   const { data: category, error: categoryError } = await supabase
     .from('product_categories')
-    .select('id, name, slug, status')
+    .select('id, name, slug, status, created_at')
     .eq('id', id)
     .maybeSingle();
 
@@ -66,12 +67,50 @@ export default async function AdminCategoryProductsPage({
       >
         ← Danh mục sản phẩm
       </Link>
-      <h1 className="mt-3 text-2xl font-bold">{category.name}</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        Danh sách sản phẩm thuộc danh mục này.
-      </p>
+      <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">{category.name}</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Thông tin danh mục và các sản phẩm đang được xếp vào danh mục này.
+          </p>
+        </div>
+        <DeleteProductCategoryButton
+          categoryId={category.id}
+          categoryName={category.name}
+          redirectAfterDelete
+        />
+      </div>
 
-      <div className="mt-5 space-y-3">
+      <section
+        aria-label="Thông tin danh mục"
+        className="mt-5 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4"
+      >
+        <div>
+          <p className="text-xs text-slate-500">Tên danh mục</p>
+          <p className="mt-1 font-medium">{category.name}</p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-500">Slug</p>
+          <p className="mt-1 font-medium">{category.slug}</p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-500">Trạng thái</p>
+          <p className="mt-1 font-medium">
+            {category.status === 'ACTIVE' ? 'Đang hoạt động' : 'Ngừng hoạt động'}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-500">Số sản phẩm</p>
+          <p className="mt-1 font-medium">{products.length}</p>
+        </div>
+        <div className="sm:col-span-2 lg:col-span-4">
+          <p className="text-xs text-slate-500">Ngày tạo</p>
+          <p className="mt-1 font-medium">{formatDate(category.created_at)}</p>
+        </div>
+      </section>
+
+      <h2 className="mt-6 text-lg font-semibold">Sản phẩm trong danh mục</h2>
+      <div className="mt-3 space-y-3">
         {products.map((product) => {
           const partner = firstRelation(product.partner_profiles);
           const availability = firstRelation(product.product_availability);
