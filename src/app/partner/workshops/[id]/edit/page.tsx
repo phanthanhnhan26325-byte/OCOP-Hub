@@ -14,7 +14,7 @@ export default async function EditWorkshopPage({ params }: { params: Promise<{ i
   if (error) throw new Error(error.message);
   if (!workshop) notFound();
   workshop.workshop_sessions.sort((a, b) => a.starts_at.localeCompare(b.starts_at) || a.id.localeCompare(b.id));
-  return <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+  return <div className="max-w-5xl">
     <Link href="/partner/workshops" className="text-sm text-emerald-800 hover:underline">← Danh sách workshop</Link>
     <h1 className="mt-5 text-2xl font-semibold">Sửa workshop</h1>
     {workshop.reject_reason && <p className="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-700">Lý do từ chối: {workshop.reject_reason}</p>}

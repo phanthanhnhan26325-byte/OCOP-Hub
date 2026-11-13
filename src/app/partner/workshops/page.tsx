@@ -29,7 +29,7 @@ export default async function PartnerWorkshopsPage({ searchParams }: { searchPar
   }
   const now = new Date();
 
-  return <div className="mx-auto max-w-[1568px] px-4 py-8 sm:px-6 sm:py-10">
+  return <div className="w-full">
     <div className="flex flex-wrap items-end justify-between gap-5">
       <div><h1 className="text-2xl font-medium tracking-tight sm:text-[32px]">Quản lý workshop</h1><p className="mt-2 text-sm leading-6 partner-muted">Theo dõi lịch tổ chức, lượt đăng ký và trạng thái phê duyệt của workshop.</p></div>
       <Link href="/partner/workshops/new" className="partner-action partner-action-primary"><PartnerIcon name="plus" />Tạo workshop</Link>

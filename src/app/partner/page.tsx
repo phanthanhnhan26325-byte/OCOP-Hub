@@ -44,7 +44,7 @@ export default async function PartnerDashboardPage({ searchParams }: { searchPar
   const profileTitle = approved ? 'Hồ sơ bán hàng đã được duyệt' : profile?.selling_status === 'PENDING' ? 'Hồ sơ bán hàng đang chờ phê duyệt' : profile?.selling_status === 'REJECTED' ? 'Hồ sơ bán hàng cần cập nhật' : profile?.selling_status === 'SUSPENDED' ? 'Quyền bán hàng đang tạm ngưng' : 'Hoàn thiện hồ sơ doanh nghiệp';
   const profileDescription = approved ? 'Doanh nghiệp có thể đăng sản phẩm và tổ chức workshop trên OCOP Hub.' : profile?.selling_status === 'PENDING' ? 'Hệ thống đang xem xét hồ sơ. Bạn sẽ nhận được thông báo khi có kết quả.' : profile?.reject_reason || 'Gửi thông tin doanh nghiệp để hệ thống xét duyệt quyền bán hàng.';
 
-  return <div className="mx-auto max-w-[1568px] px-4 pb-12 pt-8 sm:px-6 sm:pt-10">
+  return <div className="w-full">
     <div className="flex flex-wrap items-end justify-between gap-5">
       <div><h1 className="text-2xl font-medium leading-snug tracking-tight sm:text-[32px]">{greeting}, {profile?.business_name || 'đối tác OCOP Hub'}</h1><p className="mt-2 text-sm leading-6 partner-muted">Đây là tình hình hoạt động của doanh nghiệp bạn hôm nay.</p></div>
       {approved && <div className="flex flex-wrap gap-3"><Link href="/partner/workshops/new" className="partner-action"><PartnerIcon name="plus" />Tạo workshop</Link><Link href="/partner/products/new" className="partner-action partner-action-primary"><PartnerIcon name="plus" />Thêm sản phẩm</Link></div>}

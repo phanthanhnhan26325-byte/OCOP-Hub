@@ -4,6 +4,7 @@ import { supabaseServer } from '@/lib/supabase/server';
 import { formatVnd } from '@/lib/money';
 import { PartnerIcon } from '@/components/partner/PartnerIcon';
 import { ProductDetails } from '@/components/partner/ProductDetails';
+import { ProductAvailabilityDialog } from '@/components/partner/ProductAvailabilityDialog';
 import { SubmitProductButton } from '@/components/partner/SubmitProductButton';
 import { DeleteButton } from '@/components/partner/DeleteButton';
 import { categoryName, productStatuses, productStatusTone, type PartnerProduct } from '@/modules/partner/product-list';
@@ -24,7 +25,7 @@ export default async function PartnerProductsPage({ searchParams }: { searchPara
 
   const products: PartnerProduct[] = [];
   for (let from = 0; ; from += 500) {
-    let query = db.from('products').select('id, name, price, status, short_description, description, reject_reason, ocop_cert_no, product_categories(name), product_availability(available_qty, reserved_qty, supply_status, pre_order_eta), product_images(url, sort_order), product_variants(id, label, price)').eq('partner_id', user.id).order('created_at', { ascending: false }).order('id');
+    let query = db.from('products').select('id, name, price, status, short_description, description, reject_reason, ocop_cert_no, product_categories(name), product_availability(available_qty, reserved_qty, supply_status, pre_order_eta), product_images(url, sort_order), product_variants(id, label, price, product_variant_availability(available_qty, supply_status, pre_order_eta))').eq('partner_id', user.id).order('created_at', { ascending: false }).order('id');
     if (q) query = query.ilike('name', `%${q.replace(/[\\%_]/g, '\\$&')}%`);
     if (category) query = query.eq('category_id', category);
     if (status) query = query.eq('status', status);
@@ -34,7 +35,7 @@ export default async function PartnerProductsPage({ searchParams }: { searchPara
     if (data.length < 500) break;
   }
 
-  return <div className="mx-auto max-w-[1568px] px-4 py-8 sm:px-6 sm:py-10">
+  return <div className="w-full">
     <div className="flex flex-wrap items-end justify-between gap-5">
       <div><h1 className="text-2xl font-medium tracking-tight sm:text-[32px]">Quản lý sản phẩm</h1><p className="mt-2 text-sm leading-6 partner-muted">Theo dõi sản phẩm, trạng thái phê duyệt và thông tin cung ứng của doanh nghiệp.</p></div>
       <Link href="/partner/products/new" className="partner-action partner-action-primary"><PartnerIcon name="plus" />Thêm sản phẩm</Link>
@@ -67,7 +68,7 @@ export default async function PartnerProductsPage({ searchParams }: { searchPara
               <td className="whitespace-nowrap px-6 py-5"><p className="font-semibold text-[#195c46]">{formatVnd(product.price)}</p>{product.product_variants.length > 0 && <p className="mt-1 text-[11px] partner-muted">{product.product_variants.length} biến thể</p>}</td>
               <td className="px-6 py-5"><p className="font-medium">{availability?.available_qty ?? 0}</p><p className="mt-1 whitespace-nowrap text-[11px] partner-muted">Đang giữ: {availability?.reserved_qty ?? 0}</p></td>
               <td className="px-6 py-5"><span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[11px] font-medium ${productStatusTone(product.status)}`}><span aria-hidden="true">●</span>{productStatuses[product.status] ?? product.status}</span></td>
-              <td className="px-6 py-5"><div className="flex flex-wrap items-start gap-2"><ProductDetails product={product} /><Link href={`/partner/products/${product.id}/edit`} className="rounded-lg border border-[#cdded5] px-3 py-1.5 text-xs font-medium text-[#195c46] hover:bg-[#eaf4ee]">Sửa</Link>{product.status === 'DRAFT' && <SubmitProductButton productId={product.id} />}<DeleteButton url={`/api/partner/products/${product.id}`} label="Xóa" /></div></td>
+              <td className="px-6 py-5"><div className="flex flex-wrap items-start gap-2"><ProductDetails product={product} /><ProductAvailabilityDialog product={product} /><Link href={`/partner/products/${product.id}/edit`} className="rounded-lg border border-[#cdded5] px-3 py-1.5 text-xs font-medium text-[#195c46] hover:bg-[#eaf4ee]">Sửa</Link>{product.status === 'DRAFT' && <SubmitProductButton productId={product.id} />}<DeleteButton url={`/api/partner/products/${product.id}`} label="Xóa" /></div></td>
             </tr>;
           })}</tbody>
         </table></div>}

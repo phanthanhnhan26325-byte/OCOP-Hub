@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { FinanceWorkspace } from '@/components/admin/FinanceWorkspace';
 import { formatDate, formatVnd } from '@/lib/money';
 import { requireRole } from '@/lib/rbac';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { supabaseServer } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,7 @@ export default async function AdminFinancePayouts({
   const supabase = await supabaseServer();
   const { data: payoutData, error: payoutError } = await supabase
     .from('payouts')
-    .select('id, statement_id, partner_id, amount, method, ref_no, transferred_at, recorded_by, settlement_statements(id, period_start, period_end, status, partner_profiles(business_name))')
+    .select('id, statement_id, partner_id, amount, method, ref_no, transferred_at, recorded_by, evidence_path, settlement_statements(id, period_start, period_end, status, partner_profiles(business_name))')
     .order('transferred_at', { ascending: false })
     .limit(5000);
   if (payoutError) throw new Error(payoutError.message);
@@ -48,6 +49,7 @@ export default async function AdminFinancePayouts({
     ref_no: string;
     transferred_at: string;
     recorded_by: string | null;
+    evidence_path: string | null;
     settlement_statements: {
       id: string;
       period_start: string;
@@ -76,12 +78,19 @@ export default async function AdminFinancePayouts({
   const currentPage = Math.min(requestedPage, pageCount);
   const rows = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const totalPaid = filtered.reduce((sum, payout) => sum + Number(payout.amount), 0);
+  const admin = rows.some((payout) => payout.evidence_path) ? supabaseAdmin() : null;
+  const rowsWithProof = await Promise.all(rows.map(async (payout) => {
+    if (!payout.evidence_path || !admin) return { ...payout, evidence_url: null };
+    const { data, error } = await admin.storage.from('ocop-settlement-payout-proofs-v1').createSignedUrl(payout.evidence_path, 300);
+    if (error) throw new Error(error.message);
+    return { ...payout, evidence_url: data.signedUrl };
+  }));
 
   return (
     <FinanceWorkspace
       active="/admin/finance/payouts"
       title="Quản lý chi trả"
-      description="Tra cứu các khoản đã chuyển cho doanh nghiệp. Chỉ ghi nhận payout sau khi chuyển tiền thực tế và có mã tham chiếu."
+      description="Tra cứu các khoản đã chuyển cho doanh nghiệp, mã giao dịch và chứng từ. Yêu cầu mới được duyệt và ghi nhận tại hàng đợi đối soát."
     >
       <section className="mb-4 grid gap-3 sm:grid-cols-3">
         <article className="rounded-xl border border-slate-200 bg-white p-4">
@@ -94,7 +103,7 @@ export default async function AdminFinancePayouts({
         </article>
         <article className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
           <p className="text-sm text-emerald-800">Thao tác ghi nhận chi trả</p>
-          <Link href="/admin/finance/reconciliation" className="mt-2 inline-block text-sm font-semibold text-emerald-800 hover:underline">Mở kỳ đối soát để chi trả →</Link>
+          <Link href="/admin/finance/reconciliation" className="mt-2 inline-block text-sm font-semibold text-emerald-800 hover:underline">Mở yêu cầu đối soát →</Link>
         </article>
       </section>
 
@@ -108,12 +117,12 @@ export default async function AdminFinancePayouts({
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1150px] text-left text-sm">
+          <table className="w-full min-w-[1220px] text-left text-sm">
             <thead className="bg-slate-50 text-xs font-medium text-slate-500">
-              <tr><th className="px-4 py-3">Mã chi trả</th><th className="px-4 py-3">Doanh nghiệp</th><th className="px-4 py-3">Kỳ đối soát</th><th className="px-4 py-3">Số tiền</th><th className="px-4 py-3">Ngày chi</th><th className="px-4 py-3">Phương thức</th><th className="px-4 py-3">Mã tham chiếu</th><th className="px-4 py-3">Người thực hiện</th><th className="px-4 py-3">Trạng thái</th><th className="px-4 py-3">Nguồn</th></tr>
+              <tr><th className="px-4 py-3">Mã chi trả</th><th className="px-4 py-3">Doanh nghiệp</th><th className="px-4 py-3">Kỳ đối soát</th><th className="px-4 py-3">Số tiền</th><th className="px-4 py-3">Ngày chi</th><th className="px-4 py-3">Phương thức</th><th className="px-4 py-3">Mã tham chiếu</th><th className="px-4 py-3">Chứng từ</th><th className="px-4 py-3">Người thực hiện</th><th className="px-4 py-3">Trạng thái</th><th className="px-4 py-3">Nguồn</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((payout) => {
+              {rowsWithProof.map((payout) => {
                 const statement = firstRelation(payout.settlement_statements);
                 const partner = firstRelation(statement?.partner_profiles);
                 return (
@@ -125,13 +134,14 @@ export default async function AdminFinancePayouts({
                     <td className="px-4 py-3 whitespace-nowrap">{formatDate(payout.transferred_at)}</td>
                     <td className="px-4 py-3">{payout.method}</td>
                     <td className="px-4 py-3 font-mono text-xs">{payout.ref_no}</td>
+                    <td className="px-4 py-3">{payout.evidence_url ? <a href={payout.evidence_url} target="_blank" rel="noreferrer" className="font-medium text-emerald-800 underline">Mở chứng từ</a> : <span className="text-slate-400">—</span>}</td>
                     <td className="px-4 py-3">{payout.recorded_by ? actorNames.get(payout.recorded_by) || 'Admin' : '—'}</td>
                     <td className="px-4 py-3"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700">Đã ghi nhận</span></td>
                     <td className="px-4 py-3"><Link href={`/admin/finance/reconciliation/${payout.statement_id}`} className="font-medium text-emerald-800 hover:underline">Kỳ đối soát</Link></td>
                   </tr>
                 );
               })}
-              {rows.length === 0 && <tr><td colSpan={10} className="px-4 py-9 text-center text-slate-500">Chưa có khoản chi trả phù hợp. Không có payout giả; hãy ghi nhận từ kỳ đối soát sau khi chuyển tiền thực tế.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={11} className="px-4 py-9 text-center text-slate-500">Chưa có khoản chi trả phù hợp. Không có payout giả; hãy ghi nhận từ yêu cầu đối soát sau khi chuyển tiền thực tế.</td></tr>}
             </tbody>
           </table>
         </div>

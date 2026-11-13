@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { formatVnd } from '@/lib/money';
-import { categoryName, productStatuses, type PartnerProduct } from '@/modules/partner/product-list';
+import { categoryName, productStatuses, variantAvailability, type PartnerProduct } from '@/modules/partner/product-list';
 import { ProductAvailabilityForm } from './ProductAvailabilityForm';
 
 export function ProductDetails({ product }: { product: PartnerProduct }) {
@@ -22,10 +22,30 @@ export function ProductDetails({ product }: { product: PartnerProduct }) {
       {product.short_description && <p className="mt-3 text-sm leading-6">{product.short_description}</p>}
       {product.description && <p className="mt-3 whitespace-pre-line text-sm leading-6 partner-muted">{product.description}</p>}
       {product.ocop_cert_no && <p className="mt-3 text-xs partner-muted">Chứng nhận OCOP: {product.ocop_cert_no}</p>}
-      {product.product_variants.length > 0 && <ul className="mt-4 space-y-2 text-sm">{product.product_variants.map(variant => <li key={variant.id} className="flex justify-between gap-3 rounded-lg bg-[#f5f8f5] px-3 py-2"><span>{variant.label}</span><span className="font-medium">{formatVnd(variant.price)}</span></li>)}</ul>}
+      {product.product_variants.length > 0 && <ul className="mt-4 space-y-2 text-sm">{product.product_variants.map(variant => {
+        const variantAvail = variantAvailability(variant);
+        return <li key={variant.id} className="rounded-lg bg-[#f5f8f5] px-3 py-2">
+          <div className="flex justify-between gap-3"><span>{variant.label}</span><span className="font-medium">{formatVnd(variant.price)}</span></div>
+          <p className="mt-1 text-xs partner-muted">
+            {variantAvail.supply_status === 'PRE_ORDER'
+              ? `Đặt trước${variantAvail.pre_order_eta ? ` · dự kiến ${new Date(variantAvail.pre_order_eta).toLocaleDateString('vi-VN')}` : ''}`
+              : variantAvail.supply_status === 'IN_STOCK' && variantAvail.available_qty > 0
+                ? `Cung ứng: ${variantAvail.available_qty}`
+                : 'Hết hàng'}
+          </p>
+        </li>;
+      })}</ul>}
       {product.status === 'REJECTED' && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">Lý do từ chối: {product.reject_reason || 'Chưa có lý do được ghi nhận.'}</p>}
       <Link href={`/partner/products/${product.id}/edit`} className="partner-action mt-5">Sửa thông tin sản phẩm</Link>
-      <ProductAvailabilityForm key={editingSession} productId={product.id} availableQty={availability?.available_qty ?? 0} reservedQty={availability?.reserved_qty ?? 0} supplyStatus={availability?.supply_status ?? 'OUT_OF_STOCK'} preOrderEta={availability?.pre_order_eta ?? null} />
+      <ProductAvailabilityForm
+        key={editingSession}
+        productId={product.id}
+        variants={product.product_variants.map(variant => ({ id: variant.id, label: variant.label, ...variantAvailability(variant) }))}
+        availableQty={availability?.available_qty ?? 0}
+        reservedQty={availability?.reserved_qty ?? 0}
+        supplyStatus={availability?.supply_status ?? 'OUT_OF_STOCK'}
+        preOrderEta={availability?.pre_order_eta ?? null}
+      />
     </dialog>
   </>;
 }

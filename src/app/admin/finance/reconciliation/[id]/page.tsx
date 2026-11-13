@@ -5,6 +5,7 @@ import { FinancePrintButton } from '@/components/admin/FinancePrintButton';
 import { FinanceWorkspace } from '@/components/admin/FinanceWorkspace';
 import { formatDate, formatVnd } from '@/lib/money';
 import { requireRole } from '@/lib/rbac';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { supabaseServer } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -42,7 +43,7 @@ export default async function AdminFinanceStatementDetail({
   const supabase = await supabaseServer();
   const { data: statementData, error: statementError } = await supabase
     .from('settlement_statements')
-    .select('id, partner_id, period_start, period_end, gross_amount, refund_amount, platform_fee, adjustments, net_payable, status, confirmed_at, created_at, partner_profiles(business_name), payouts(id, amount, method, ref_no, transferred_at, recorded_by), settlement_items(id, ref_type, ref_id, amount, direction, created_at)')
+    .select('id, partner_id, period_start, period_end, gross_amount, refund_amount, platform_fee, adjustments, net_payable, status, confirmed_at, created_at, partner_profiles(business_name), payouts(id, amount, method, ref_no, transferred_at, recorded_by, evidence_path), settlement_items(id, ref_type, ref_id, amount, direction, created_at)')
     .eq('id', id)
     .maybeSingle();
   if (statementError) throw new Error(statementError.message);
@@ -62,7 +63,7 @@ export default async function AdminFinanceStatementDetail({
     confirmed_at: string | null;
     created_at: string;
     partner_profiles: { business_name: string } | { business_name: string }[] | null;
-    payouts: { id: string; amount: number | string; method: string; ref_no: string; transferred_at: string; recorded_by: string | null }[] | null;
+    payouts: { id: string; amount: number | string; method: string; ref_no: string; transferred_at: string; recorded_by: string | null; evidence_path: string | null }[] | null;
     settlement_items: SettlementItem[] | null;
   };
   const items = statement.settlement_items ?? [];
@@ -80,6 +81,13 @@ export default async function AdminFinanceStatementDetail({
   const additionalAdjustments = items
     .filter((item) => item.ref_type === 'ADJUSTMENT')
     .reduce((sum, item) => sum + (item.direction === 'DEBIT' ? -Number(item.amount) : Number(item.amount)), 0);
+  const admin = supabaseAdmin();
+  const payoutRows = await Promise.all((statement.payouts ?? []).map(async (payout) => {
+    if (!payout.evidence_path) return { ...payout, evidence_url: null };
+    const { data, error } = await admin.storage.from('ocop-settlement-payout-proofs-v1').createSignedUrl(payout.evidence_path, 300);
+    if (error) throw new Error(error.message);
+    return { ...payout, evidence_url: data.signedUrl };
+  }));
 
   return (
     <FinanceWorkspace
@@ -159,13 +167,13 @@ export default async function AdminFinanceStatementDetail({
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="font-semibold">Lịch sử chi trả thực tế</h2>
-        <p className="mt-1 text-xs text-slate-500">Payout chỉ được ghi nhận sau khi đã chuyển tiền và nhập mã tham chiếu thực tế.</p>
+        <p className="mt-1 text-xs text-slate-500">Các khoản chi trả qua yêu cầu đối soát lưu mã giao dịch và chứng từ chuyển khoản riêng tư.</p>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[600px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2">Ngày chi</th><th className="px-3 py-2">Mã tham chiếu</th><th className="px-3 py-2">Phương thức</th><th className="px-3 py-2 text-right">Số tiền</th></tr></thead>
+            <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-3 py-2">Ngày chi</th><th className="px-3 py-2">Mã tham chiếu</th><th className="px-3 py-2">Phương thức</th><th className="px-3 py-2 text-right">Số tiền</th><th className="px-3 py-2">Chứng từ</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {(statement.payouts ?? []).map((payout) => <tr key={payout.id}><td className="px-3 py-2">{formatDate(payout.transferred_at)}</td><td className="px-3 py-2 font-mono text-xs">{payout.ref_no}</td><td className="px-3 py-2">{payout.method}</td><td className="px-3 py-2 text-right font-medium">{formatVnd(payout.amount)}</td></tr>)}
-              {(statement.payouts ?? []).length === 0 && <tr><td colSpan={4} className="px-3 py-5 text-center text-slate-500">Chưa có khoản chi trả.</td></tr>}
+              {payoutRows.map((payout) => <tr key={payout.id}><td className="px-3 py-2">{formatDate(payout.transferred_at)}</td><td className="px-3 py-2 font-mono text-xs">{payout.ref_no}</td><td className="px-3 py-2">{payout.method}</td><td className="px-3 py-2 text-right font-medium">{formatVnd(payout.amount)}</td><td className="px-3 py-2">{payout.evidence_url ? <a href={payout.evidence_url} target="_blank" rel="noreferrer" className="text-emerald-800 underline">Mở chứng từ</a> : <span className="text-slate-400">—</span>}</td></tr>)}
+              {(statement.payouts ?? []).length === 0 && <tr><td colSpan={5} className="px-3 py-5 text-center text-slate-500">Chưa có khoản chi trả.</td></tr>}
             </tbody>
           </table>
         </div>

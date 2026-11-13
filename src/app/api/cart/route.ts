@@ -27,7 +27,7 @@ export async function GET() {
     const cartId = await getOrCreateCart(supabase, user.id);
     const { data: items, error } = await supabase
       .from('cart_items')
-      .select('id, qty, product_id, variant_id, product_variants(id, label, price), products(id, name, slug, price, partner_id, product_images(url, sort_order), product_availability(available_qty, reserved_qty, supply_status), partner_profiles(business_name))')
+      .select('id, qty, product_id, variant_id, product_variants(id, label, price, product_variant_availability(available_qty, supply_status)), products(id, name, slug, price, partner_id, product_images(url, sort_order), product_availability(available_qty, reserved_qty, supply_status), partner_profiles(business_name))')
       .eq('cart_id', cartId);
     if (error) throw new Error(error.message);
     return NextResponse.json({ items });
@@ -56,15 +56,26 @@ export async function POST(req: NextRequest) {
 
     const { data: variants, error: variantsError } = await supabase
       .from('product_variants')
-      .select('id')
+      .select('id, product_variant_availability(available_qty, supply_status)')
       .eq('product_id', product.id);
     if (variantsError) throw new Error(variantsError.message);
     if (variants.length > 0 && !body.data.variantId) {
       return NextResponse.json({ error: { code: 'PRODUCT_VARIANT_REQUIRED', message: 'Vui lòng chọn khối lượng sản phẩm' } }, { status: 400 });
     }
 
-    if (body.data.variantId && !variants.some((variant) => variant.id === body.data.variantId)) {
+    const selectedVariant = body.data.variantId
+      ? variants.find((variant) => variant.id === body.data.variantId)
+      : null;
+    if (body.data.variantId && !selectedVariant) {
       return NextResponse.json({ error: { code: 'INVALID_PRODUCT_VARIANT', message: 'Biến thể sản phẩm không hợp lệ' } }, { status: 400 });
+    }
+    if (selectedVariant) {
+      const relation = selectedVariant.product_variant_availability;
+      const availability = Array.isArray(relation) ? relation[0] ?? null : relation;
+      if (availability && availability.supply_status !== 'PRE_ORDER'
+        && (availability.supply_status !== 'IN_STOCK' || availability.available_qty <= 0)) {
+        return NextResponse.json({ error: { code: 'VARIANT_OUT_OF_STOCK', message: 'Biến thể này đang hết hàng' } }, { status: 409 });
+      }
     }
 
     let existingQuery = supabase
@@ -77,22 +88,29 @@ export async function POST(req: NextRequest) {
       : existingQuery.is('variant_id', null);
     const { data: existing, error: existingError } = await existingQuery.maybeSingle();
     if (existingError) throw new Error(existingError.message);
+    let itemId: string;
     if (existing) {
       const { error } = await supabase
         .from('cart_items')
         .update({ qty: existing.qty + body.data.qty })
         .eq('id', existing.id);
       if (error) throw new Error(error.message);
+      itemId = existing.id;
     } else {
-      const { error } = await supabase.from('cart_items').insert({
-        cart_id: cartId,
-        product_id: body.data.productId,
-        variant_id: body.data.variantId ?? null,
-        qty: body.data.qty,
-      });
+      const { data: createdItem, error } = await supabase
+        .from('cart_items')
+        .insert({
+          cart_id: cartId,
+          product_id: body.data.productId,
+          variant_id: body.data.variantId ?? null,
+          qty: body.data.qty,
+        })
+        .select('id')
+        .single();
       if (error) throw new Error(error.message);
+      itemId = createdItem.id;
     }
-    return NextResponse.json({ ok: true }, { status: 201 });
+    return NextResponse.json({ ok: true, itemId }, { status: 201 });
   } catch (err) {
     return handleApiError(err);
   }

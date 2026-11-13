@@ -3,7 +3,7 @@ import type { ShippingAddress } from './shipping-address';
 export const orderStatuses: Record<string, string> = {
   CREATED: 'Mới tạo', PAYMENT_PENDING: 'Chờ thanh toán', PAID: 'Đã thanh toán',
   PENDING_ACCEPTANCE: 'Chờ tiếp nhận', ACCEPTED: 'Đã tiếp nhận', PROCESSING: 'Đang chuẩn bị',
-  SHIPPED: 'Đang giao', DELIVERED: 'Đã giao', COMPLETED: 'Hoàn thành',
+  SHIPPED: 'Đang giao', DELIVERED: 'Đã giao', COMPLETED: 'Hoàn thành', RETURNED: 'Đã nhận lại hàng',
   REJECTED_BY_PARTNER: 'Đã từ chối', CANCELLED: 'Đã hủy', EXPIRED: 'Hết hạn', PARTIALLY_REFUNDED: 'Hoàn tiền một phần',
 };
 
@@ -44,6 +44,7 @@ export function orderStatusTone(status: string) {
   if (['ACCEPTED', 'PROCESSING', 'SHIPPED'].includes(status)) return 'bg-[#e8f1f6] text-[#286684]';
   if (['PENDING_ACCEPTANCE', 'PAYMENT_PENDING', 'PARTIALLY_REFUNDED'].includes(status)) return 'bg-[#fcf3d9] text-[#9b7418]';
   if (['REJECTED_BY_PARTNER', 'CANCELLED'].includes(status)) return 'bg-[#fae9e7] text-[#cc4943]';
+  if (status === 'RETURNED') return 'bg-[#fcf3d9] text-[#9b7418]';
   return 'bg-slate-100 text-slate-600';
 }
 

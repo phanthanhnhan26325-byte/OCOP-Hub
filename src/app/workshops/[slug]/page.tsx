@@ -1,5 +1,9 @@
 import { supabaseServer } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getSessionUser } from '@/lib/rbac';
 import { WorkshopSessionPicker } from '@/components/customer/WorkshopSessionPicker';
+import { ReviewsSection, type PublicReview, type ReviewPurchase, type ReviewStats } from '@/components/customer/ReviewsSection';
+import { isMissingReviewSchema } from '@/modules/reviews/schema';
 import Link from 'next/link';
 import { CoffeeWorkshopArticle } from '@/components/customer/CoffeeWorkshopArticle';
 import { TeaWorkshopArticle } from '@/components/customer/TeaWorkshopArticle';
@@ -28,6 +32,63 @@ export default async function WorkshopDetailPage({ params }: PageProps<'/worksho
 
   const partner = ws.partner_profiles as unknown as { business_name: string; address: string; contact_phone: string } | null;
   const sessions = [...(ws.workshop_sessions ?? [])].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const user = await getSessionUser();
+  let reviewsAvailable = true;
+  let publicReviews: PublicReview[] = [];
+  let reviewStats: ReviewStats | null = null;
+  const reviewsResult = await supabase
+    .from('workshop_reviews_public')
+    .select('id, display_name, rating, comment, created_at, updated_at')
+    .eq('workshop_id', ws.id)
+    .order('updated_at', { ascending: false })
+    .limit(100);
+  if (reviewsResult.error && isMissingReviewSchema(reviewsResult.error)) {
+    reviewsAvailable = false;
+    console.error('[workshop:reviews-schema]', reviewsResult.error.message);
+  } else if (reviewsResult.error) {
+    throw new Error(reviewsResult.error.message);
+  } else {
+    publicReviews = (reviewsResult.data ?? []) as PublicReview[];
+    const statsResult = await supabase
+      .from('workshop_review_stats')
+      .select('review_count, average_rating, one_star, two_stars, three_stars, four_stars, five_stars')
+      .eq('workshop_id', ws.id)
+      .maybeSingle();
+    if (statsResult.error && isMissingReviewSchema(statsResult.error)) {
+      reviewsAvailable = false;
+      console.error('[workshop:reviews-schema]', statsResult.error.message);
+    } else if (statsResult.error) {
+      throw new Error(statsResult.error.message);
+    } else {
+      reviewStats = statsResult.data as ReviewStats | null;
+    }
+  }
+
+  let reviewPurchases: ReviewPurchase[] = [];
+  if (reviewsAvailable && user?.roles.includes('CUSTOMER')) {
+    const admin = supabaseAdmin();
+    const { data: registrations, error: registrationsError } = await admin
+      .from('workshop_registrations')
+      .select('id, code, created_at, workshop_sessions!inner(workshop_id)')
+      .eq('customer_id', user.id)
+      .eq('status', 'COMPLETED')
+      .eq('workshop_sessions.workshop_id', ws.id);
+    if (registrationsError) throw new Error(registrationsError.message);
+    const registrationIds = (registrations ?? []).map((registration) => registration.id);
+    const { data: existingReviews, error: existingReviewsError } = registrationIds.length
+      ? await admin.from('workshop_reviews').select('id, registration_id, rating, comment').in('registration_id', registrationIds)
+      : { data: [], error: null };
+    if (existingReviewsError) throw new Error(existingReviewsError.message);
+    const reviewsByRegistration = new Map((existingReviews ?? []).map((review) => [review.registration_id, review]));
+    reviewPurchases = (registrations ?? []).map((registration) => {
+      const review = reviewsByRegistration.get(registration.id);
+      return {
+        id: registration.id,
+        label: `Đăng ký ${registration.code} · ${new Date(registration.created_at).toLocaleDateString('vi-VN')}`,
+        review: review ? { id: review.id, rating: review.rating, comment: review.comment } : null,
+      };
+    });
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -55,6 +116,16 @@ export default async function WorkshopDetailPage({ params }: PageProps<'/worksho
       {slug === 'mot-ngay-lam-nghe-nhan-tra' && <TeaArtisanWorkshopArticle />}
       </div>
       </div>
+      <ReviewsSection
+        type="workshop"
+        targetId={ws.id}
+        available={reviewsAvailable}
+        reviews={publicReviews}
+        stats={reviewStats ?? {
+          review_count: 0, average_rating: 0, one_star: 0, two_stars: 0, three_stars: 0, four_stars: 0, five_stars: 0,
+        }}
+        purchases={reviewPurchases}
+      />
     </div>
   );
 }

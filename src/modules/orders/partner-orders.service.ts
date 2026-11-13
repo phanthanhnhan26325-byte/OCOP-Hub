@@ -5,6 +5,7 @@ import { supabaseServer } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { withPartnerShipping } from './partner-shipping.service';
 import { chooseOrderPayment, type OrderPayment, type PartnerOrder, type PartnerOrderRecord } from './partner-order-view';
+import { withSignedOrderEvidence } from './order-service-requests';
 
 const columns = 'id, parent_order_id, customer_id, code, status, total, subtotal, shipping_fee, discount, platform_fee, placed_at, updated_at, shipping_address, order_items(id, product_name, product_image, qty, unit_price, line_total)';
 
@@ -52,11 +53,22 @@ export async function getPartnerOrderDetail(id: string) {
   if (!data) return null;
   const [order] = await enrichOwnedOrders([data as PartnerOrderRecord]);
   // Only the buyer of this already-authorized child order is looked up.
-  const [history, customer] = await Promise.all([
+  const [history, customer, returnRequests] = await Promise.all([
     db.from('order_status_history').select('id, from_status, to_status, actor_role, reason, created_at').eq('order_id', id).order('created_at', { ascending: false }).order('id'),
     supabaseAdmin().from('users').select('email').eq('id', order.customer_id).maybeSingle(),
+    db.from('order_service_requests')
+      .select('id, order_id, request_type, status, reason, evidence_path, contact_phone, partner_response, refund_amount, refund_status, created_at, return_received_at')
+      .eq('order_id', id)
+      .eq('request_type', 'RETURN')
+      .order('created_at', { ascending: false }),
   ]);
   if (history.error) throw new Error(history.error.message);
   if (customer.error) throw new Error(customer.error.message);
-  return { order, history: history.data, customerEmail: customer.data?.email ?? null };
+  if (returnRequests.error) throw new Error(returnRequests.error.message);
+  return {
+    order,
+    history: history.data,
+    customerEmail: customer.data?.email ?? null,
+    returnRequests: await withSignedOrderEvidence(returnRequests.data ?? []),
+  };
 }

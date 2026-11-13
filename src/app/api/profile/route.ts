@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { handleApiError, requireAuth } from '@/lib/rbac';
 import { supabaseServer } from '@/lib/supabase/server';
+import { normalizeVietnamesePhone } from '@/modules/auth/vietnamese-phone';
 import { z } from 'zod';
 
 const profileSchema = z.object({
@@ -31,6 +32,14 @@ export async function PATCH(request: NextRequest) {
     }
 
     const supabase = await supabaseServer();
+    const normalizedPhone = parsed.data.phone ? normalizeVietnamesePhone(parsed.data.phone) : null;
+    if (parsed.data.phone && !normalizedPhone) {
+      return NextResponse.json(
+        { error: 'Vui lòng nhập số di động Việt Nam hợp lệ.' },
+        { status: 400 },
+      );
+    }
+
     const emailChanged = parsed.data.email.toLowerCase() !== user.email.toLowerCase();
     if (emailChanged) {
       const { error } = await supabase.auth.updateUser({ email: parsed.data.email });
@@ -44,7 +53,7 @@ export async function PATCH(request: NextRequest) {
       .from('users')
       .update({
         full_name: parsed.data.fullName,
-        phone: parsed.data.phone || null,
+        phone: normalizedPhone,
         address: parsed.data.address || null,
         updated_at: new Date().toISOString(),
       })
@@ -56,7 +65,7 @@ export async function PATCH(request: NextRequest) {
         .from('users')
         .update({
           full_name: parsed.data.fullName,
-          phone: parsed.data.phone || null,
+          phone: normalizedPhone,
           updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
@@ -64,7 +73,12 @@ export async function PATCH(request: NextRequest) {
     }
     if (error) throw new Error(error.message);
 
-    return NextResponse.json({ ok: true, emailConfirmationRequired: emailChanged, addressSaved });
+    return NextResponse.json({
+      ok: true,
+      emailConfirmationRequired: emailChanged,
+      addressSaved,
+      phone: normalizedPhone ?? '',
+    });
   } catch (error) {
     return handleApiError(error);
   }

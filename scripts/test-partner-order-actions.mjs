@@ -104,6 +104,13 @@ test('rejection requires a meaningful reason on the server', async () => {
   assert.equal(calls.history[0].reason, 'Không thể cung ứng');
 });
 
+test('partners cannot mark a delivered order complete', async () => {
+  const { calls, patch } = setup({ order: { status: 'DELIVERED' } });
+  assert.equal((await patch({ toStatus: 'COMPLETED' })).status, 400);
+  assert.equal(calls.privilegedClients, 0);
+  assert.equal(calls.writes.length, 0);
+});
+
 test('history failure reports the saved status and an explicit warning', async () => {
   const { patch } = setup({ historyError: { message: 'history unavailable' } });
   const response = await patch();

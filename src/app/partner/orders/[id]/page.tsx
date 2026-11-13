@@ -6,6 +6,7 @@ import { formatVnd } from '@/lib/money';
 import { OrderBadge } from '@/components/partner/OrderBadge';
 import { SubOrderActions } from '@/components/partner/SubOrderActions';
 import { PartnerIcon } from '@/components/partner/PartnerIcon';
+import { OrderReturnRequests } from '@/components/partner/OrderReturnRequests';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,7 @@ const actionCopy: Record<string, [string, string]> = {
   ACCEPTED: ['Đơn hàng đã được tiếp nhận', 'Bắt đầu chuẩn bị sản phẩm để giao cho khách hàng.'],
   PROCESSING: ['Đơn hàng đang được chuẩn bị', 'Khi bàn giao cho đơn vị vận chuyển, hãy cập nhật sang trạng thái đang giao.'],
   SHIPPED: ['Đơn hàng đang được giao', 'Xác nhận khách đã nhận hàng khi có thông tin giao hàng thành công.'],
-  DELIVERED: ['Khách hàng đã nhận đơn', 'Kiểm tra lại thông tin và xác nhận hoàn thành đơn hàng.'],
+  DELIVERED: ['Khách hàng đã nhận đơn', 'Khách hàng sẽ xác nhận hoàn thành hoặc gửi yêu cầu trả hàng; doanh nghiệp không thể tự xác nhận hoàn thành thay khách.'],
   COMPLETED: ['Đơn hàng đã hoàn thành', 'Bạn có thể xem lại thông tin và lịch sử xử lý bên dưới.'],
   REJECTED_BY_PARTNER: ['Doanh nghiệp đã từ chối đơn hàng', 'Lý do từ chối được lưu trong lịch sử xử lý.'],
   CANCELLED: ['Đơn hàng đã bị hủy', 'Đơn này không thể tiếp tục chuyển trạng thái xử lý.'],
@@ -30,13 +31,18 @@ export default async function PartnerOrderDetailPage({ params }: { params: Promi
   const { id } = await params;
   const data = await getPartnerOrderDetail(id);
   if (!data) notFound();
-  const { order, history, customerEmail } = data;
+  const { order, history, customerEmail, returnRequests } = data;
   const shipping = order.shipping_address;
   const activeStep = steps.indexOf(order.status);
-  const [actionTitle, actionDescription] = actionCopy[order.status] ?? [orderStatuses[order.status] || order.status, 'Thông tin và lịch sử của phần đơn được hiển thị bên dưới.'];
+  const returnRequestPending = returnRequests.some(request => request.status === 'REQUESTED');
+  const [defaultActionTitle, defaultActionDescription] = actionCopy[order.status] ?? [orderStatuses[order.status] || order.status, 'Thông tin và lịch sử của phần đơn được hiển thị bên dưới.'];
+  const actionTitle = returnRequestPending ? 'Khách hàng yêu cầu trả hàng / hoàn tiền' : defaultActionTitle;
+  const actionDescription = returnRequestPending
+    ? 'Vui lòng xem lý do, hình ảnh và thông tin liên hệ bên dưới, sau đó phản hồi yêu cầu của khách hàng.'
+    : defaultActionDescription;
   const paidAt = order.payment?.payment_transactions.filter(transaction => transaction.type === 'PAYMENT' && transaction.status === 'SUCCESS').sort((a, b) => a.created_at.localeCompare(b.created_at))[0]?.created_at;
 
-  return <div className="mx-auto max-w-[1568px] px-4 py-8 sm:px-6 sm:py-10">
+  return <div className="w-full">
     <Link href="/partner/orders" className="inline-flex items-center gap-1 text-xs font-medium text-[#195c46] hover:underline">← Quay lại danh sách đơn</Link>
     <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
       <div><h1 className="text-2xl font-medium tracking-tight sm:text-[32px]">{order.code}</h1><p className="mt-2 text-sm leading-6 partner-muted">{order.parent_code ? `Thuộc đơn chung ${order.parent_code} · ` : ''}Đặt lúc {orderDate(order.placed_at)}</p></div>
@@ -47,10 +53,26 @@ export default async function PartnerOrderDetailPage({ params }: { params: Promi
       <ol className="flex min-w-[800px] items-center">{steps.map((step, index) => <li key={step} aria-current={index === activeStep ? 'step' : undefined} className="flex flex-1 items-center gap-2 last:flex-none"><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[11px] ${index <= activeStep ? 'border-[#195c46] bg-[#195c46] text-white' : 'border-[#cdded5] text-[#738787]'}`}>{index < activeStep ? <PartnerIcon name="check" className="!h-3.5 !w-3.5" /> : index + 1}</span><span className={`whitespace-nowrap text-[11px] ${index <= activeStep ? 'font-medium text-[#195c46]' : 'partner-muted'}`}>{orderStatuses[step]}</span>{index < steps.length - 1 && <span aria-hidden="true" className={`mx-2 h-px min-w-3 flex-1 ${index < activeStep ? 'bg-[#195c46]' : 'bg-[#dce6e1]'}`} />}</li>)}</ol>
     </section>
 
-    <section className={`mt-4 flex flex-wrap items-start justify-between gap-4 rounded-2xl border px-5 py-5 sm:px-6 ${order.status === 'PENDING_ACCEPTANCE' ? 'border-[#eddfb4] bg-[#fff9e9]' : 'border-[#dce6e1] bg-white'}`}>
-      <div className="min-w-0 flex-1"><h2 className="text-sm font-semibold">{actionTitle}</h2><p className="mt-2 text-xs leading-5 partner-muted">{actionDescription}</p></div>
-      <div className="w-full sm:max-w-xl"><SubOrderActions orderId={order.id} status={order.status} /></div>
+    <section
+      role={returnRequestPending ? 'alert' : undefined}
+      className={`mt-4 flex flex-wrap items-start justify-between gap-4 rounded-2xl border px-5 py-5 sm:px-6 ${
+        returnRequestPending
+          ? 'border-red-300 bg-red-50 text-red-800'
+          : order.status === 'PENDING_ACCEPTANCE'
+            ? 'border-[#eddfb4] bg-[#fff9e9]'
+            : 'border-[#dce6e1] bg-white'
+      }`}
+    >
+      <div className="min-w-0 flex-1">
+        <h2 className={`text-sm font-semibold ${returnRequestPending ? 'text-red-800' : ''}`}>{actionTitle}</h2>
+        <p className={`mt-2 text-xs leading-5 ${returnRequestPending ? 'text-red-700' : 'partner-muted'}`}>{actionDescription}</p>
+      </div>
+      <div className="w-full sm:max-w-xl"><SubOrderActions key={`${order.id}:${order.status}`} orderId={order.id} status={order.status} /></div>
     </section>
+
+    <div className="mt-6">
+    <OrderReturnRequests orderId={order.id} requests={returnRequests} />
+    </div>
 
     <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,2.5fr)_minmax(280px,1fr)]">
       <div className="min-w-0 space-y-6">

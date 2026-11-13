@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
 const transitions: Record<string, { to: string; label: string; variant?: 'primary' | 'danger' }[]> = {
@@ -11,7 +11,6 @@ const transitions: Record<string, { to: string; label: string; variant?: 'primar
   ACCEPTED: [{ to: 'PROCESSING', label: 'Bắt đầu xử lý' }],
   PROCESSING: [{ to: 'SHIPPED', label: 'Đã giao vận' }],
   SHIPPED: [{ to: 'DELIVERED', label: 'Khách đã nhận' }],
-  DELIVERED: [{ to: 'COMPLETED', label: 'Hoàn thành' }],
 };
 
 export function SubOrderActions({ orderId, status }: { orderId: string; status: string }) {
@@ -20,7 +19,6 @@ export function SubOrderActions({ orderId, status }: { orderId: string; status: 
   const [currentStatus, setCurrentStatus] = useState(status);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { setCurrentStatus(status); }, [status]);
   const router = useRouter();
   const actions = transitions[currentStatus] ?? [];
   if (actions.length === 0 && !message && !error) return null;
@@ -66,7 +64,7 @@ export function SubOrderActions({ orderId, status }: { orderId: string; status: 
                   const success: Record<string, string> = {
                     ACCEPTED: 'Đã tiếp nhận đơn hàng.', REJECTED_BY_PARTNER: 'Đã từ chối đơn hàng.',
                     PROCESSING: 'Đơn hàng đang được xử lý.', SHIPPED: 'Đã cập nhật đơn hàng đang giao.',
-                    DELIVERED: 'Đã xác nhận khách nhận hàng.', COMPLETED: 'Đã hoàn thành đơn hàng.',
+                    DELIVERED: 'Đã xác nhận khách nhận hàng.',
                   };
                   setMessage(data.warning ?? success[data.status] ?? 'Đã lưu trạng thái đơn hàng.');
                   router.refresh();

@@ -30,7 +30,7 @@ export default async function PartnerOrdersPage({ searchParams }: { searchParams
   const pages = Array.from({ length: Math.min(5, pageCount) }, (_, index) => startPage + index);
   const hasFilter = Boolean(filters.q || filters.status || filters.payment || filters.days !== 'all');
 
-  return <div className="mx-auto max-w-[1568px] px-4 py-8 sm:px-6 sm:py-10">
+  return <div className="w-full">
     <h1 className="text-2xl font-medium tracking-tight sm:text-[32px]">Đơn hàng</h1>
     <p className="mt-2 text-sm leading-6 partner-muted">Theo dõi và xử lý các phần đơn thuộc doanh nghiệp bạn.</p>
     <section aria-label="Danh sách đơn hàng" className="partner-panel mt-7 overflow-hidden p-5 sm:p-6">

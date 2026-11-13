@@ -5,6 +5,8 @@ export interface ShippingAddress {
   ward?: string;
   district?: string;
   city?: string;
+  commune_code?: string;
+  province_code?: string;
   note?: string;
 }
 
@@ -12,7 +14,10 @@ export function mergeShippingAddress(child: unknown, parent: unknown): ShippingA
   const result: ShippingAddress = {};
   const local = child && typeof child === 'object' && !Array.isArray(child) ? child as Record<string, unknown> : {};
   const inherited = parent && typeof parent === 'object' && !Array.isArray(parent) ? parent as Record<string, unknown> : {};
-  for (const key of ['receiver_name', 'phone', 'address', 'ward', 'district', 'city', 'note'] as const) {
+  for (const key of [
+    'receiver_name', 'phone', 'address', 'ward', 'district', 'city',
+    'commune_code', 'province_code', 'note',
+  ] as const) {
     const own = typeof local[key] === 'string' ? local[key].trim() : '';
     const fallback = typeof inherited[key] === 'string' ? inherited[key].trim() : '';
     if (own || fallback) result[key] = own || fallback;

@@ -4,6 +4,8 @@ import { handleApiError, requireApprovedPartner } from '@/lib/rbac';
 import { supabaseServer } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
+const supplyStatusSchema = z.enum(['IN_STOCK', 'OUT_OF_STOCK', 'PRE_ORDER']);
+
 const patchSchema = z.object({
   name: z.string().min(3).optional(),
   shortDescription: z.string().max(300).optional(),
@@ -13,7 +15,23 @@ const patchSchema = z.object({
   categoryId: z.string().uuid().optional(),
   ocopCertNo: z.string().optional(),
   images: z.array(z.string().url()).min(1).max(10).optional(),
-  variants: z.array(z.object({ id: z.string().uuid().optional(), label: z.string().trim().min(1).max(80), price: z.number().positive() })).optional(),
+  variants: z.array(z.object({
+    id: z.string().uuid().optional(),
+    label: z.string().trim().min(1).max(80),
+    price: z.number().positive(),
+    availableQty: z.number().int().min(0).optional(),
+    supplyStatus: supplyStatusSchema.optional(),
+    preOrderEta: z.union([z.string().date(), z.literal(''), z.null()]).optional(),
+  })).superRefine((variants, ctx) => {
+    variants.forEach((variant, index) => {
+      if (variant.supplyStatus === 'PRE_ORDER' && !variant.preOrderEta) {
+        ctx.addIssue({ code: 'custom', path: [index, 'preOrderEta'], message: 'Vui lòng chọn ngày dự kiến có hàng khi nhận đặt trước' });
+      }
+      if (variant.supplyStatus === 'OUT_OF_STOCK' && variant.availableQty !== undefined && variant.availableQty !== 0) {
+        ctx.addIssue({ code: 'custom', path: [index, 'availableQty'], message: 'Số lượng cung ứng phải bằng 0 khi hết hàng' });
+      }
+    });
+  }).optional(),
   action: z.enum(['save', 'submit']).default('save'),
 });
 

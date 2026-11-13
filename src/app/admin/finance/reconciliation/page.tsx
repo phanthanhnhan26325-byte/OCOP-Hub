@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { SettlementActions } from '@/components/admin/SettlementActions';
+import { SettlementRequestActions, type SettlementRequestRow } from '@/components/admin/SettlementRequestActions';
 import { FinanceWorkspace } from '@/components/admin/FinanceWorkspace';
 import { formatVnd } from '@/lib/money';
 import { requireRole } from '@/lib/rbac';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { supabaseServer } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -29,17 +31,49 @@ export default async function AdminFinanceReconciliationPage({
   const month = /^\d{4}-\d{2}$/.test(firstParam(params.month)) ? firstParam(params.month) : '';
   const requestedPage = Math.max(1, Number.parseInt(firstParam(params.page), 10) || 1);
   const supabase = await supabaseServer();
-  const [{ data: statementData, error: statementError }, { data: partnerData, error: partnerError }] = await Promise.all([
+  const [{ data: statementData, error: statementError }, { data: partnerData, error: partnerError }, { data: requestData, error: requestError }] = await Promise.all([
     supabase
       .from('settlement_statements')
       .select('id, partner_id, period_start, period_end, gross_amount, refund_amount, platform_fee, adjustments, net_payable, status, created_at, partner_profiles(business_name), payouts(amount), settlement_items(ref_type, amount, direction)')
       .order('period_start', { ascending: false })
       .limit(5000),
     supabase.from('partner_profiles').select('user_id, business_name, selling_status').eq('selling_status', 'APPROVED').order('business_name'),
+    supabase
+      .from('settlement_requests')
+      .select('id, status, requested_at, requested_amount, bank_name, account_holder, account_number, rejection_reason, proof_path, transfer_reference, settlement_statements(period_start, period_end, gross_amount, refund_amount, platform_fee, adjustments, net_payable), partner_profiles(business_name)')
+      .order('requested_at', { ascending: false })
+      .limit(100),
   ]);
   if (statementError) throw new Error(statementError.message);
   if (partnerError) throw new Error(partnerError.message);
+  if (requestError) throw new Error(requestError.message);
 
+  const proofPaths = (requestData ?? [])
+    .map((request) => request.proof_path as string | null)
+    .filter((path): path is string => Boolean(path));
+  const proofUrls = new Map<string, string>();
+  if (proofPaths.length > 0) {
+    const { data, error } = await supabaseAdmin()
+      .storage.from('ocop-settlement-payout-proofs-v1').createSignedUrls(proofPaths, 300);
+    if (error) throw new Error(error.message);
+    for (const proof of data) {
+      if (proof.error) throw new Error(proof.error);
+      if (proof.path && proof.signedUrl) proofUrls.set(proof.path, proof.signedUrl);
+    }
+  }
+  const requests: SettlementRequestRow[] = (requestData ?? []).map((request) => {
+    const statementValue = request.settlement_statements;
+    const statement = Array.isArray(statementValue) ? statementValue[0] : statementValue;
+    const profileValue = request.partner_profiles;
+    const profile = Array.isArray(profileValue) ? profileValue[0] : profileValue;
+    const { proof_path: proofPath, ...rest } = request;
+    return {
+      ...rest,
+      statement: statement ?? null,
+      business_name: profile?.business_name ?? 'Doanh nghiệp',
+      proof_url: proofPath ? proofUrls.get(proofPath) ?? null : null,
+    } as SettlementRequestRow;
+  });
   const statements = (statementData ?? []) as unknown as {
     id: string;
     partner_id: string;
@@ -72,6 +106,12 @@ export default async function AdminFinanceReconciliationPage({
       title="Đối soát doanh nghiệp"
       description="Tổng hợp doanh thu đủ điều kiện, phí nền tảng, hoàn tiền, điều chỉnh và recover theo từng tháng."
     >
+      <section className="rounded-xl border border-emerald-200 bg-white p-5">
+        <h2 className="font-semibold">Yêu cầu đối soát từ doanh nghiệp</h2>
+        <p className="mt-1 text-sm text-slate-500">Duyệt hoặc từ chối yêu cầu. Sau khi chuyển khoản thủ công, nhập mã giao dịch và tải chứng từ để ghi nhận đã đối soát.</p>
+        <SettlementRequestActions requests={requests} />
+      </section>
+
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="font-semibold">Tạo kỳ đối soát theo tháng</h2>
         <p className="mt-1 text-sm text-slate-500">Chỉ tạo kỳ tháng dương lịch đầy đủ. Kỳ đã tồn tại giữ nguyên snapshot; không bị ghi đè khi tạo lại.</p>

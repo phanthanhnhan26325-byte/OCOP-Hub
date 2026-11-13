@@ -9,13 +9,13 @@ export default async function EditPartnerProductPage({ params }: { params: Promi
   const { id } = await params;
   const db = await supabaseServer();
   const { data: product, error } = await db.from('products')
-    .select('id, name, slug, short_description, description, price, category_id, ocop_cert_no, status, reject_reason, product_images(url, sort_order), product_variants(id, label, price)')
+    .select('id, name, slug, short_description, description, price, category_id, ocop_cert_no, status, reject_reason, product_images(url, sort_order), product_variants(id, label, price, product_variant_availability(available_qty, supply_status, pre_order_eta))')
     .eq('id', id).eq('partner_id', user.id).maybeSingle();
   if (error) throw new Error(error.message);
   if (!product) notFound();
   const { data: categories, error: categoryError } = await db.from('product_categories').select('id, name, status').order('name');
   if (categoryError) throw new Error(categoryError.message);
-  return <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+  return <div className="max-w-5xl">
     <Link href="/partner/products" className="text-sm font-medium text-[#195c46] hover:underline">← Danh sách sản phẩm</Link>
     <h1 className="mt-5 text-2xl font-semibold">Sửa sản phẩm</h1>
     {product.reject_reason && <p role="note" className="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-700">Lý do từ chối: {product.reject_reason}</p>}

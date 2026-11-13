@@ -9,11 +9,10 @@ const allowed: Record<string, string[]> = {
   ACCEPTED: ['PROCESSING'],
   PROCESSING: ['SHIPPED'],
   SHIPPED: ['DELIVERED'],
-  DELIVERED: ['COMPLETED'],
 };
 
 const bodySchema = z.object({
-  toStatus: z.enum(['ACCEPTED', 'REJECTED_BY_PARTNER', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'COMPLETED']),
+  toStatus: z.enum(['ACCEPTED', 'REJECTED_BY_PARTNER', 'PROCESSING', 'SHIPPED', 'DELIVERED']),
   reason: z.string().trim().max(2000).optional(),
 }).superRefine((body, ctx) => {
   if (body.toStatus === 'REJECTED_BY_PARTNER' && (body.reason?.length ?? 0) < 3) {

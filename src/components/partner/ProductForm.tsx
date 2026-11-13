@@ -12,10 +12,50 @@ const imageExtensions: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
 };
+interface ProductVariantAvailability {
+  available_qty: number;
+  supply_status: string;
+  pre_order_eta: string | null;
+}
+
 interface ProductVariantInput {
   id?: string;
   label: string;
   price: number;
+  product_variant_availability?: ProductVariantAvailability | ProductVariantAvailability[] | null;
+}
+
+interface VariantFormRow {
+  id?: string;
+  label: string;
+  price: number;
+  availableQty: number;
+  supplyStatus: string;
+  preOrderEta: string;
+}
+
+function toVariantRow(variant: ProductVariantInput): VariantFormRow {
+  const relation = variant.product_variant_availability;
+  const availability = Array.isArray(relation) ? relation[0] ?? null : relation;
+  return {
+    id: variant.id,
+    label: variant.label,
+    price: Number(variant.price),
+    availableQty: availability?.available_qty ?? 0,
+    supplyStatus: availability?.supply_status ?? 'IN_STOCK',
+    preOrderEta: availability?.pre_order_eta ?? '',
+  };
+}
+
+function variantSnapshot(rows: VariantFormRow[]) {
+  return rows.map((variant) => ({
+    id: variant.id,
+    label: variant.label.trim(),
+    price: Number(variant.price),
+    availableQty: Number(variant.availableQty),
+    supplyStatus: variant.supplyStatus,
+    preOrderEta: variant.supplyStatus === 'PRE_ORDER' ? variant.preOrderEta : '',
+  })).sort((a, b) => (a.id ?? '').localeCompare(b.id ?? ''));
 }
 
 export interface EditableProduct {
@@ -56,7 +96,7 @@ function ProductFormFields({
   const [existingImages, setExistingImages] = useState(() =>
     [...(product?.product_images ?? [])].sort((a, b) => a.sort_order - b.sort_order).map(image => image.url));
   const [images, setImages] = useState<File[]>([]);
-  const [variants, setVariants] = useState<ProductVariantInput[]>(product?.product_variants ?? []);
+  const [variants, setVariants] = useState<VariantFormRow[]>(() => (product?.product_variants ?? []).map(toVariantRow));
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -96,8 +136,7 @@ function ProductFormFields({
           form.categoryId === (product.category_id ?? '') && form.ocopCertNo === (product.ocop_cert_no ?? '') &&
           Number(variants.length ? Math.min(...variants.map(v => v.price)) : form.price) === Number(product.price) &&
           JSON.stringify(existingImages) === JSON.stringify([...product.product_images].sort((a, b) => a.sort_order - b.sort_order).map(image => image.url)) &&
-          JSON.stringify(variants.map(v => ({ id: v.id, label: v.label.trim(), price: Number(v.price) })).sort((a, b) => (a.id ?? '').localeCompare(b.id ?? ''))) ===
-          JSON.stringify(product.product_variants.map(v => ({ id: v.id, label: v.label, price: Number(v.price) })).sort((a, b) => (a.id ?? '').localeCompare(b.id ?? '')))) {
+          JSON.stringify(variantSnapshot(variants)) === JSON.stringify(variantSnapshot(product.product_variants.map(toVariantRow)))) {
           setMsg('Bạn chưa thay đổi thông tin sản phẩm. Không cần gửi duyệt lại.');
           return;
         }
@@ -112,6 +151,18 @@ function ProductFormFields({
         const variantLabels = variants.map((variant) => variant.label.trim().toLocaleLowerCase('vi'));
         if (new Set(variantLabels).size !== variantLabels.length) {
           setMsg('Khối lượng của các biến thể không được trùng nhau.');
+          return;
+        }
+        if (variants.some((variant) => !Number.isInteger(Number(variant.availableQty)) || Number(variant.availableQty) < 0)) {
+          setMsg('Số lượng cung ứng của mỗi biến thể phải là số nguyên không âm.');
+          return;
+        }
+        if (variants.some((variant) => variant.supplyStatus === 'OUT_OF_STOCK' && Number(variant.availableQty) !== 0)) {
+          setMsg('Số lượng cung ứng phải bằng 0 khi biến thể hết hàng.');
+          return;
+        }
+        if (variants.some((variant) => variant.supplyStatus === 'PRE_ORDER' && !variant.preOrderEta)) {
+          setMsg('Vui lòng chọn ngày dự kiến có hàng cho biến thể nhận đặt trước.');
           return;
         }
         startTransition(async () => {
@@ -143,7 +194,14 @@ function ProductFormFields({
                 description: form.description,
                 price: variants.length ? Math.min(...variants.map((variant) => variant.price)) : form.price,
                 categoryId: form.categoryId || null,
-                variants: variants.map((variant) => ({ id: variant.id, label: variant.label.trim(), price: variant.price })),
+                variants: variants.map((variant) => ({
+                  id: variant.id,
+                  label: variant.label.trim(),
+                  price: variant.price,
+                  availableQty: Number(variant.availableQty),
+                  supplyStatus: variant.supplyStatus,
+                  preOrderEta: variant.supplyStatus === 'PRE_ORDER' ? variant.preOrderEta : null,
+                })),
                 ocopCertNo: form.ocopCertNo,
                 images: imageUrls,
                 ...(product ? { action: 'submit' } : {}),
@@ -192,50 +250,103 @@ function ProductFormFields({
           </select>
         </label>
         <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 sm:col-span-2">
-          Tồn kho do OCOP Hub cập nhật sau khi nhập hàng tại kho trung tâm. Doanh nghiệp không thể tự sửa số lượng tồn kho.
+          Khi sản phẩm có biến thể, doanh nghiệp khai báo số lượng cung ứng và trạng thái cho từng biến thể.
+          Sản phẩm không có biến thể dùng nút “Cập nhật số lượng” ở danh sách sản phẩm.
         </p>
         <fieldset className="space-y-2 text-sm sm:col-span-2">
           <legend className="font-medium">Biến thể khối lượng (không bắt buộc)</legend>
-          <p className="text-xs text-slate-500">Tự nhập khối lượng và giá cho từng lựa chọn, ví dụ 250 g, 500 g, 1 kg.</p>
+          <p className="text-xs text-slate-500">Tự nhập khối lượng, giá và thông tin cung ứng cho từng lựa chọn, ví dụ 250 g, 500 g, 1 kg.</p>
           {variants.map((variant, index) => (
-            <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-              <label>
-                Khối lượng
-                <input
-                  required
-                  value={variant.label}
-                  onChange={(event) => setVariants((current) => current.map((item, itemIndex) =>
-                    itemIndex === index ? { ...item, label: event.target.value } : item,
-                  ))}
-                  placeholder="Ví dụ: 500 g"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                />
-              </label>
-              <label>
-                Giá (VNĐ)
-                <input
-                  type="number"
-                  required
-                  min={1}
-                  value={variant.price || ''}
-                  onChange={(event) => setVariants((current) => current.map((item, itemIndex) =>
-                    itemIndex === index ? { ...item, price: Number(event.target.value) } : item,
-                  ))}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => setVariants((current) => current.filter((_, itemIndex) => itemIndex !== index))}
-                className="self-end rounded-lg border border-red-200 px-3 py-2 text-red-600 hover:bg-red-50"
-              >
-                Xóa
-              </button>
+            <div key={index} className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                <label>
+                  Khối lượng
+                  <input
+                    required
+                    value={variant.label}
+                    onChange={(event) => setVariants((current) => current.map((item, itemIndex) =>
+                      itemIndex === index ? { ...item, label: event.target.value } : item,
+                    ))}
+                    placeholder="Ví dụ: 500 g"
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  />
+                </label>
+                <label>
+                  Giá (VNĐ)
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    value={variant.price || ''}
+                    onChange={(event) => setVariants((current) => current.map((item, itemIndex) =>
+                      itemIndex === index ? { ...item, price: Number(event.target.value) } : item,
+                    ))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setVariants((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                  className="self-end rounded-lg border border-red-200 px-3 py-2 text-red-600 hover:bg-red-50"
+                >
+                  Xóa
+                </button>
+              </div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <label>
+                  Số lượng cung ứng
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    step={1}
+                    value={variant.availableQty}
+                    disabled={variant.supplyStatus === 'OUT_OF_STOCK'}
+                    onChange={(event) => setVariants((current) => current.map((item, itemIndex) =>
+                      itemIndex === index ? { ...item, availableQty: Number(event.target.value) } : item,
+                    ))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 disabled:bg-slate-100"
+                  />
+                </label>
+                <label>
+                  Trạng thái cung ứng
+                  <select
+                    value={variant.supplyStatus}
+                    onChange={(event) => {
+                      const nextStatus = event.target.value;
+                      setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? {
+                        ...item,
+                        supplyStatus: nextStatus,
+                        availableQty: nextStatus === 'OUT_OF_STOCK' ? 0 : item.availableQty,
+                        preOrderEta: nextStatus === 'PRE_ORDER' ? item.preOrderEta : '',
+                      } : item));
+                    }}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+                  >
+                    <option value="IN_STOCK">Đang có hàng</option>
+                    <option value="OUT_OF_STOCK">Hết hàng</option>
+                    <option value="PRE_ORDER">Nhận đặt trước</option>
+                  </select>
+                </label>
+                <label>
+                  Ngày dự kiến có hàng
+                  <input
+                    type="date"
+                    required={variant.supplyStatus === 'PRE_ORDER'}
+                    disabled={variant.supplyStatus !== 'PRE_ORDER'}
+                    value={variant.preOrderEta}
+                    onChange={(event) => setVariants((current) => current.map((item, itemIndex) =>
+                      itemIndex === index ? { ...item, preOrderEta: event.target.value } : item,
+                    ))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 disabled:bg-slate-100"
+                  />
+                </label>
+              </div>
             </div>
           ))}
           <button
             type="button"
-            onClick={() => setVariants((current) => [...current, { label: '', price: 0 }])}
+            onClick={() => setVariants((current) => [...current, { label: '', price: 0, availableQty: 0, supplyStatus: 'IN_STOCK', preOrderEta: '' }])}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
           >
             + Thêm biến thể khối lượng

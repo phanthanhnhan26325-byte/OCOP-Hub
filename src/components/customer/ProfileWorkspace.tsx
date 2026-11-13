@@ -3,6 +3,9 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ProfileSidebar, type ProfileTabId } from './ProfileSidebar';
+import { CustomerOrderActions } from './CustomerOrderActions';
+import type { OrderServiceRequest } from '@/modules/orders/order-service-requests';
 
 type Relation<T> = T | T[] | null;
 
@@ -21,13 +24,16 @@ export type ProfileOrder = {
     partner_profiles: Relation<{ business_name: string }>;
     order_items: Array<{
       id: string;
+      product_id: string;
       product_name: string;
       product_image: string | null;
       qty: number;
       unit_price: number | string;
       line_total: number | string;
+      products: Relation<{ slug: string }>;
     }>;
     order_status_history: Array<{ to_status: string; created_at: string; reason: string | null }>;
+    order_service_requests: OrderServiceRequest[];
   }> | null;
 };
 
@@ -43,6 +49,7 @@ export type ProfileRegistration = {
     location: string;
     workshops: Relation<{
       title: string;
+      slug: string;
       cover_image: string | null;
       partner_profiles: Relation<{ business_name: string }>;
     }>;
@@ -58,15 +65,6 @@ type Profile = {
   createdAt: string;
 };
 
-const tabs = [
-  { id: 'overview', label: 'Tổng quan' },
-  { id: 'personal', label: 'Thông tin cá nhân' },
-  { id: 'orders', label: 'Lịch sử mua hàng' },
-  { id: 'workshops', label: 'Lịch sử Workshop' },
-] as const;
-
-type TabId = (typeof tabs)[number]['id'];
-
 const orderLabels: Record<string, string> = {
   CREATED: 'Mới tạo',
   PAYMENT_PENDING: 'Chờ thanh toán',
@@ -77,6 +75,7 @@ const orderLabels: Record<string, string> = {
   SHIPPED: 'Đang giao hàng',
   DELIVERED: 'Đã giao hàng',
   COMPLETED: 'Hoàn tất',
+  RETURNED: 'Đã nhận lại hàng',
   REJECTED_BY_PARTNER: 'Bị từ chối',
   CANCELLED: 'Đã hủy',
   EXPIRED: 'Hết hạn',
@@ -97,6 +96,19 @@ const registrationLabels: Record<string, string> = {
 function relationOne<T>(value: Relation<T> | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (typeof error === 'string') return error;
+  if (
+    error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof error.message === 'string'
+  ) {
+    return error.message;
+  }
+  return fallback;
 }
 
 function formatMoney(value: number | string) {
@@ -168,24 +180,27 @@ export function ProfileWorkspace({
   roles,
   orders,
   registrations,
+  initialOrderId = null,
 }: {
   profile: Profile;
   addressUnavailable?: boolean;
   roles: string[];
   orders: ProfileOrder[];
   registrations: ProfileRegistration[];
+  initialOrderId?: string | null;
 }) {
   const router = useRouter();
   const [profile, setProfile] = useState(initialProfile);
-  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [activeTab, setActiveTab] = useState<ProfileTabId>('overview');
   const [editing, setEditing] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<ProfileOrder | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(initialOrderId);
   const [selectedRegistration, setSelectedRegistration] = useState<ProfileRegistration | null>(null);
   const [orderSearch, setOrderSearch] = useState('');
   const [orderStatus, setOrderStatus] = useState('all');
   const [registrationStatus, setRegistrationStatus] = useState('all');
   const [showAllOrders, setShowAllOrders] = useState(false);
+  const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? null;
   const [showAllRegistrations, setShowAllRegistrations] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -222,11 +237,11 @@ export function ProfileWorkspace({
         body: JSON.stringify(editValues),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? 'Không thể lưu thông tin.');
+      if (!response.ok) throw new Error(getApiErrorMessage(result.error, 'Không thể lưu thông tin.'));
       setProfile((current) => ({
         ...current,
         fullName: editValues.fullName.trim(),
-        phone: editValues.phone.trim(),
+        phone: result.phone,
         address: result.addressSaved === false ? current.address : editValues.address.trim(),
       }));
       setEditing(false);
@@ -252,7 +267,7 @@ export function ProfileWorkspace({
       formData.append('avatar', file);
       const response = await fetch('/api/profile/avatar', { method: 'POST', body: formData });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? 'Không thể tải ảnh lên.');
+      if (!response.ok) throw new Error(getApiErrorMessage(result.error, 'Không thể tải ảnh lên.'));
       setProfile((current) => ({ ...current, avatarUrl: result.avatarUrl }));
       setNotice('Ảnh đại diện đã được cập nhật.');
       router.refresh();
@@ -274,7 +289,7 @@ export function ProfileWorkspace({
         body: JSON.stringify(passwordValues),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? 'Không thể đổi mật khẩu.');
+      if (!response.ok) throw new Error(getApiErrorMessage(result.error, 'Không thể đổi mật khẩu.'));
       setPasswordValues({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setChangingPassword(false);
       setNotice('Mật khẩu đã được cập nhật.');
@@ -359,7 +374,7 @@ export function ProfileWorkspace({
                     <StatusBadge status={status} label={orderLabels[status] ?? status} />
                     <p className="mt-2 font-semibold text-[#1d4d38]">{formatMoney(order.total)}</p>
                   </div>
-                  <button type="button" onClick={() => setSelectedOrder(order)} className="h-10 rounded-lg border border-[#bdd3c3] px-4 text-sm font-semibold text-[#1d6043] transition hover:bg-[#edf5ee]">Xem chi tiết</button>
+                  <button type="button" onClick={() => setSelectedOrderId(order.id)} className="h-10 rounded-lg border border-[#bdd3c3] px-4 text-sm font-semibold text-[#1d6043] transition hover:bg-[#edf5ee]">Xem chi tiết</button>
                 </div>
               </article>
             );
@@ -421,6 +436,7 @@ export function ProfileWorkspace({
                   </div>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setSelectedRegistration(registration)} className="h-10 rounded-lg border border-[#bdd3c3] px-4 text-sm font-semibold text-[#1d6043] transition hover:bg-[#edf5ee]">Chi tiết</button>
+                    {registration.status === 'COMPLETED' && workshop?.slug && <Link href={`/workshops/${workshop.slug}#reviews`} className="inline-flex h-10 items-center rounded-lg bg-[#1d4d38] px-3 text-sm font-semibold text-white hover:bg-[#173d30]">Đánh giá</Link>}
                     {cancellable && <button type="button" onClick={() => void cancelRegistration(registration)} className="h-10 rounded-lg border border-[#e5c4ba] px-3 text-sm font-semibold text-[#91463b] transition hover:bg-[#fcf0ed]">Hủy</button>}
                   </div>
                 </div>
@@ -442,7 +458,9 @@ export function ProfileWorkspace({
 
   return (
     <div className="min-h-[70vh] bg-[#f7f4ec]">
-      <div className="mx-auto max-w-7xl px-4 py-7 sm:py-10 lg:px-6">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8 md:flex-row lg:px-6">
+        <ProfileSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+        <main className="min-w-0 flex-1">
         <section className="relative overflow-hidden rounded-2xl border border-[#d7d0b8] bg-[#f2ead4] p-5 sm:p-7 lg:p-8">
           <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-[linear-gradient(110deg,transparent,rgba(255,255,255,0.42))] md:block" />
           <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center">
@@ -466,23 +484,6 @@ export function ProfileWorkspace({
           <span>{notice}</span>
           <button type="button" onClick={() => setNotice('')} aria-label="Đóng thông báo" className="text-lg leading-none">×</button>
         </div>}
-
-        <div className="mt-6">
-          <div className="sm:hidden">
-            <label htmlFor="profile-tab-select" className="sr-only">Chọn mục hồ sơ</label>
-            <select id="profile-tab-select" value={activeTab} onChange={(event) => setActiveTab(event.target.value as TabId)} className="h-12 w-full rounded-lg border border-[#d7d0b8] bg-white px-3 font-medium text-[#1d4d38]">
-              {tabs.map((tab) => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
-            </select>
-          </div>
-          <nav aria-label="Điều hướng hồ sơ" className="hidden border-b border-[#d7d0b8] sm:flex">
-            {tabs.map((tab) => (
-              <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} aria-current={activeTab === tab.id ? 'page' : undefined} className={`relative px-5 py-4 text-sm font-semibold transition ${activeTab === tab.id ? 'text-[#1d4d38]' : 'text-[#66766b] hover:text-[#1d4d38]'}`}>
-                {tab.label}
-                {activeTab === tab.id && <span className="absolute inset-x-4 bottom-0 h-[3px] rounded-full bg-[#e2c76c]" />}
-              </button>
-            ))}
-          </nav>
-        </div>
 
         <div className="py-6 sm:py-7">
           {activeTab === 'overview' && (
@@ -529,7 +530,7 @@ export function ProfileWorkspace({
                     <button type="button" onClick={() => setActiveTab('orders')} className="text-sm font-semibold text-[#26704e] hover:underline">Xem tất cả</button>
                   </div>
                   {orders[0] ? (
-                    <button type="button" onClick={() => setSelectedOrder(orders[0])} className="mt-4 flex w-full items-center justify-between gap-4 border-t border-[#eee9de] pt-4 text-left">
+                    <button type="button" onClick={() => setSelectedOrderId(orders[0].id)} className="mt-4 flex w-full items-center justify-between gap-4 border-t border-[#eee9de] pt-4 text-left">
                       <span><span className="block font-medium text-[#31483a]">Đơn {orders[0].code}</span><span className="mt-1 block text-xs text-[#7b877e]">{formatDate(orders[0].placed_at, true)}</span></span>
                       <span className="shrink-0 text-right"><span className="block text-sm font-semibold text-[#1d4d38]">{formatMoney(orders[0].total)}</span><span className="mt-1 block text-xs text-[#26704e]">Chi tiết →</span></span>
                     </button>
@@ -574,6 +575,7 @@ export function ProfileWorkspace({
           {activeTab === 'orders' && renderOrders()}
           {activeTab === 'workshops' && renderWorkshops()}
         </div>
+        </main>
       </div>
 
       {editing && (
@@ -583,7 +585,17 @@ export function ProfileWorkspace({
               <ProfileAvatar profile={profile} size="small" />
               <label className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-[#bdd3c3] px-4 text-sm font-semibold text-[#1d6043] hover:bg-[#edf5ee]">
                 {uploading ? 'Đang tải ảnh...' : 'Thay ảnh đại diện'}
-                <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={uploading} onChange={(event) => void uploadAvatar(event.target.files?.[0])} />
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  disabled={uploading}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    event.currentTarget.value = '';
+                    void uploadAvatar(file);
+                  }}
+                />
               </label>
             </div>
             <label className="block text-sm font-medium text-[#40574a]">Họ và tên
@@ -593,8 +605,9 @@ export function ProfileWorkspace({
               <input required type="email" maxLength={254} value={editValues.email} onChange={(event) => setEditValues({ ...editValues, email: event.target.value })} className="mt-1 h-11 w-full rounded-lg border border-[#d7d0b8] bg-white px-3 outline-none focus:border-[#1d4d38]" />
               <span className="mt-1 block text-xs font-normal text-[#7b877e]">Email mới chỉ có hiệu lực sau khi bạn xác nhận qua hộp thư.</span>
             </label>
-            <label className="block text-sm font-medium text-[#40574a]">Số điện thoại
+            <label className="block text-sm font-medium text-[#40574a]">Số điện thoại liên hệ
               <input type="tel" maxLength={30} value={editValues.phone} onChange={(event) => setEditValues({ ...editValues, phone: event.target.value })} className="mt-1 h-11 w-full rounded-lg border border-[#d7d0b8] bg-white px-3 outline-none focus:border-[#1d4d38]" />
+              <span className="mt-1 block text-xs font-normal text-[#7b877e]">Số điện thoại chưa được xác minh; vui lòng nhập chính xác để doanh nghiệp liên hệ giao hàng.</span>
             </label>
             <label className="block text-sm font-medium text-[#40574a]">Địa chỉ nhận hàng
               <textarea rows={3} maxLength={300} value={editValues.address} onChange={(event) => setEditValues({ ...editValues, address: event.target.value })} className="mt-1 w-full resize-y rounded-lg border border-[#d7d0b8] bg-white px-3 py-2 outline-none focus:border-[#1d4d38]" />
@@ -630,7 +643,7 @@ export function ProfileWorkspace({
       )}
 
       {selectedOrder && (
-        <Dialog title={`Chi tiết đơn ${selectedOrder.code}`} wide onClose={() => setSelectedOrder(null)}>
+        <Dialog title={`Chi tiết đơn ${selectedOrder.code}`} wide onClose={() => setSelectedOrderId(null)}>
           <div className="space-y-5">
             <div className="grid gap-4 rounded-lg bg-[#f7f4ec] p-4 text-sm sm:grid-cols-3">
               <p><span className="block text-xs text-[#7b877e]">Ngày đặt</span><span className="mt-1 block font-medium text-[#31483a]">{formatDate(selectedOrder.placed_at, true)}</span></p>
@@ -648,6 +661,11 @@ export function ProfileWorkspace({
                     <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-[#f1eee5]">{item.product_image && <img src={item.product_image} alt={item.product_name} className="h-full w-full object-cover" />}</div>
                     <div className="min-w-0 flex-1"><p className="font-medium text-[#31483a]">{item.product_name}</p><p className="mt-1 text-xs text-[#7b877e]">Số lượng: {item.qty} · {formatMoney(item.unit_price)}/sản phẩm</p></div>
                     <p className="shrink-0 text-sm font-semibold text-[#1d4d38]">{formatMoney(item.line_total)}</p>
+                    {['DELIVERED', 'COMPLETED'].includes(child.status) && relationOne(item.products)?.slug && (
+                      <Link href={`/products/${relationOne(item.products)?.slug}#reviews`} className="shrink-0 rounded-lg bg-[#1d4d38] px-3 py-2 text-xs font-semibold text-white hover:bg-[#173d30]">
+                        Đánh giá
+                      </Link>
+                    )}
                   </div>
                 ))}
                 {child.order_status_history.length > 0 && (
@@ -658,6 +676,13 @@ export function ProfileWorkspace({
                     </ol>
                   </div>
                 )}
+                <CustomerOrderActions
+                  key={`${child.id}:${child.status}:${child.order_service_requests.map((request) => `${request.id}-${request.status}-${request.refund_status}`).join(',')}`}
+                  orderId={child.id}
+                  status={child.status}
+                  phone={typeof selectedOrder.shipping_address.phone === 'string' ? selectedOrder.shipping_address.phone : ''}
+                  requests={child.order_service_requests}
+                />
               </section>
             ))}
           </div>
@@ -682,6 +707,11 @@ export function ProfileWorkspace({
                 <div><dt className="text-xs text-[#7b877e]">Trạng thái</dt><dd className="mt-1"><StatusBadge status={selectedRegistration.status} label={registrationLabels[selectedRegistration.status] ?? selectedRegistration.status} /></dd></div>
               </dl>
               <p className="border-t border-[#eee9de] pt-4 text-sm font-semibold text-[#1d4d38]">Phí đăng ký: {formatMoney(selectedRegistration.amount)}</p>
+              {selectedRegistration.status === 'COMPLETED' && workshop?.slug && (
+                <Link href={`/workshops/${workshop.slug}#reviews`} className="inline-flex rounded-lg bg-[#1d4d38] px-4 py-2 text-sm font-semibold text-white hover:bg-[#173d30]">
+                  Đánh giá trải nghiệm
+                </Link>
+              )}
             </div>
           </Dialog>
         );

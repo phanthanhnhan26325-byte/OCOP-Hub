@@ -4,20 +4,23 @@ import { AppError } from '@/lib/errors';
 import { requireAuth } from '@/lib/rbac';
 import { env } from '@/lib/env';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { normalizeVietnamesePhone } from '@/modules/auth/vietnamese-phone';
+import { getVietnameseAddressNames } from './vietnam-address';
 
 export const shippingAddressSchema = z.object({
-  receiverName: z.string().min(2),
-  phone: z.string().min(8),
-  address: z.string().min(5),
-  ward: z.string().optional(),
-  district: z.string().optional(),
-  city: z.string().optional(),
-  note: z.string().optional(),
+  receiverName: z.string().trim().min(2).max(100),
+  phone: z.string().min(9).max(16),
+  address: z.string().trim().min(3).max(300),
+  provinceCode: z.string().regex(/^\d{2}$/),
+  communeCode: z.string().regex(/^\d{5}$/),
+  note: z.string().trim().max(500).optional(),
 });
 
 export const checkoutInputSchema = z.object({
   idempotencyKey: z.string().min(8).max(64),
   shippingAddress: shippingAddressSchema,
+  selectedCartItemIds: z.array(z.string().uuid()).min(1)
+    .refine(ids => new Set(ids).size === ids.length, 'Danh sách sản phẩm được chọn không hợp lệ.'),
 });
 
 export type CheckoutResult = {
@@ -69,19 +72,32 @@ export async function ensurePayment(input: {
 export async function checkout(input: z.infer<typeof checkoutInputSchema>): Promise<CheckoutResult> {
   const user = await requireAuth();
   const supabase = await supabaseServer();
+  const normalizedPhone = normalizeVietnamesePhone(input.shippingAddress.phone);
+  if (!normalizedPhone) {
+    throw new AppError('INVALID_PHONE', 'Vui lòng nhập số điện thoại di động Việt Nam hợp lệ.', 400);
+  }
+  const addressNames = getVietnameseAddressNames(
+    input.shippingAddress.provinceCode,
+    input.shippingAddress.communeCode,
+  );
+  if (!addressNames) {
+    throw new AppError('INVALID_ADDRESS', 'Vui lòng chọn tỉnh/thành phố và xã/phường hợp lệ.', 400);
+  }
 
   const { data: rpc, error } = await supabaseAdmin().rpc('checkout', {
     p_customer: user.id,
     p_idempotency_key: input.idempotencyKey,
     p_shipping_address: {
       receiver_name: input.shippingAddress.receiverName,
-      phone: input.shippingAddress.phone,
+      phone: normalizedPhone,
       address: input.shippingAddress.address,
-      ward: input.shippingAddress.ward ?? '',
-      district: input.shippingAddress.district ?? '',
-      city: input.shippingAddress.city ?? '',
+      ward: addressNames.commune,
+      commune_code: input.shippingAddress.communeCode,
+      city: addressNames.province,
+      province_code: input.shippingAddress.provinceCode,
       note: input.shippingAddress.note ?? '',
     },
+    p_selected_cart_item_ids: input.selectedCartItemIds,
   });
   if (error) throw new AppError(error.message.includes('INSUFFICIENT_SUPPLY') ? 'INSUFFICIENT_SUPPLY' : 'CHECKOUT_FAILED', error.message, 400);
 

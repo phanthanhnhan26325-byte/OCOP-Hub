@@ -2,6 +2,19 @@ export const productStatuses: Record<string, string> = {
   DRAFT: 'Bản nháp', PENDING: 'Chờ duyệt', APPROVED: 'Đang bán', REJECTED: 'Bị từ chối', UNLISTED: 'Đã gỡ',
 };
 
+export interface VariantAvailability {
+  available_qty: number;
+  supply_status: string;
+  pre_order_eta: string | null;
+}
+
+export interface PartnerProductVariant {
+  id: string;
+  label: string;
+  price: number | string;
+  product_variant_availability: VariantAvailability | VariantAvailability[] | null;
+}
+
 export interface PartnerProduct {
   id: string;
   name: string;
@@ -13,8 +26,18 @@ export interface PartnerProduct {
   ocop_cert_no: string | null;
   product_categories: { name: string } | { name: string }[] | null;
   product_images: { url: string; sort_order: number }[];
-  product_variants: { id: string; label: string; price: number | string }[];
+  product_variants: PartnerProductVariant[];
   product_availability: { available_qty: number; reserved_qty: number; supply_status: string; pre_order_eta: string | null } | null;
+}
+
+export function variantAvailability(variant: PartnerProductVariant): VariantAvailability {
+  const relation = variant.product_variant_availability;
+  const availability = Array.isArray(relation) ? relation[0] ?? null : relation;
+  return {
+    available_qty: availability?.available_qty ?? 0,
+    supply_status: availability?.supply_status ?? 'OUT_OF_STOCK',
+    pre_order_eta: availability?.pre_order_eta ?? null,
+  };
 }
 
 export function categoryName(product: PartnerProduct) {

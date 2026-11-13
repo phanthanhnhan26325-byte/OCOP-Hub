@@ -40,7 +40,20 @@ interface ProductDetail {
   created_at: string;
   updated_at: string;
   product_categories: { name: string } | { name: string }[] | null;
-  product_variants: { id: string; label: string; price: number | string }[] | null;
+  product_variants: {
+    id: string;
+    label: string;
+    price: number | string;
+    product_variant_availability: {
+      available_qty: number;
+      supply_status: string;
+      pre_order_eta: string | null;
+    } | {
+      available_qty: number;
+      supply_status: string;
+      pre_order_eta: string | null;
+    }[] | null;
+  }[] | null;
   product_availability: {
     available_qty: number;
     reserved_qty: number;
@@ -68,6 +81,7 @@ interface ProductOrderItem {
 
 interface AvailabilityChange {
   id: string;
+  variant_id: string | null;
   change_type: string;
   qty_before: number;
   qty_after: number;
@@ -91,7 +105,7 @@ export default async function AdminProductDetailPage({
   const supabase = await supabaseServer();
   const { data: productData, error: productError } = await supabase
     .from('products')
-    .select('id, partner_id, name, slug, short_description, description, price, status, classifications, ocop_cert_no, reject_reason, created_at, updated_at, product_categories(name), product_variants(id, label, price), product_availability(available_qty, reserved_qty, supply_status, pre_order_eta, updated_at, updated_by), product_images(url, alt, sort_order), partner_profiles(business_name)')
+    .select('id, partner_id, name, slug, short_description, description, price, status, classifications, ocop_cert_no, reject_reason, created_at, updated_at, product_categories(name), product_variants(id, label, price, product_variant_availability(available_qty, supply_status, pre_order_eta)), product_availability(available_qty, reserved_qty, supply_status, pre_order_eta, updated_at, updated_by), product_images(url, alt, sort_order), partner_profiles(business_name)')
     .eq('id', id)
     .maybeSingle();
 
@@ -113,7 +127,7 @@ export default async function AdminProductDetailPage({
       .in('orders.status', recognizedOrderStatuses),
     supabase
       .from('product_availability_history')
-      .select('id, change_type, qty_before, qty_after, ref_type, ref_id, actor_id, created_at')
+      .select('id, variant_id, change_type, qty_before, qty_after, ref_type, ref_id, actor_id, created_at')
       .eq('product_id', product.id)
       .order('created_at', { ascending: false })
       .limit(50),
@@ -143,6 +157,7 @@ export default async function AdminProductDetailPage({
     actorNames = new Map((actors ?? []).map((actor) => [actor.id, actor.full_name || actor.email]));
   }
 
+  const variantNames = new Map((product.product_variants ?? []).map((variant) => [variant.id, variant.label]));
   const image = [...(product.product_images ?? [])].sort((a, b) => a.sort_order - b.sort_order)[0];
   const availableToSell = Math.max(
     (availability?.available_qty ?? 0) - (availability?.reserved_qty ?? 0),
@@ -222,9 +237,24 @@ export default async function AdminProductDetailPage({
           <section className="mt-5 border-t border-slate-100 pt-4">
             <h2 className="font-semibold">Phiên bản sản phẩm</h2>
             <ul className="mt-2 space-y-1 text-sm text-slate-600">
-              {product.product_variants.map((variant) => (
-                <li key={variant.id}>{variant.label} · {formatVnd(variant.price)}</li>
-              ))}
+              {product.product_variants.map((variant) => {
+                const relation = variant.product_variant_availability;
+                const variantAvailability = Array.isArray(relation) ? relation[0] ?? null : relation;
+                return (
+                  <li key={variant.id}>
+                    {variant.label} · {formatVnd(variant.price)}
+                    {variantAvailability && (
+                      <span className="ml-2 text-xs text-slate-500">
+                        {variantAvailability.supply_status === 'PRE_ORDER'
+                          ? `Đặt trước${variantAvailability.pre_order_eta ? ` · dự kiến ${variantAvailability.pre_order_eta}` : ''}`
+                          : variantAvailability.supply_status === 'IN_STOCK'
+                            ? `· Cung ứng ${variantAvailability.available_qty}`
+                            : '· Hết hàng'}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </section>
         )}
@@ -261,7 +291,10 @@ export default async function AdminProductDetailPage({
               {history.map((entry) => (
                 <tr key={entry.id} className="border-b border-slate-50">
                   <td className="px-4 py-3">{formatDate(entry.created_at)}</td>
-                  <td className="px-4 py-3">{entry.change_type}</td>
+                  <td className="px-4 py-3">
+                    {entry.variant_id ? `${variantNames.get(entry.variant_id) ?? 'Biến thể'} · ` : ''}
+                    {entry.change_type}
+                  </td>
                   <td className="px-4 py-3">{entry.qty_before} → {entry.qty_after}</td>
                   <td className="px-4 py-3 text-slate-500">
                     {entry.actor_id ? actorNames.get(entry.actor_id) ?? entry.actor_id : 'Hệ thống'}
