@@ -39,18 +39,20 @@ export async function ensurePayment(input: {
   customerId: string;
   amount: number;
   provider?: string;
+  expiresAt?: string;
 }) {
   const supabase = await supabaseServer();
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from('payments')
     .select('id, status, amount, provider')
     .eq('purpose', input.purpose)
     .eq('reference_id', input.referenceId)
     .in('status', ['CREATED', 'PENDING'])
     .maybeSingle();
+  if (existingError) throw new AppError('PAYMENT_LOOKUP_FAILED', existingError.message, 500);
   if (existing) return existing;
 
-  const expiresAt = new Date(Date.now() + env.PAYMENT_HOLD_TTL_MINUTES * 60_000).toISOString();
+  const expiresAt = input.expiresAt ?? new Date(Date.now() + env.PAYMENT_HOLD_TTL_MINUTES * 60_000).toISOString();
   const { data, error } = await supabase
     .from('payments')
     .insert({

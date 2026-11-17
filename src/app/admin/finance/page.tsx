@@ -140,22 +140,20 @@ export default async function AdminFinanceDashboard({
         <FinanceCard title="Tổng tiền đã chi trả" value={formatVnd(currentTotals.paid)} caption="Các payout có thời điểm chuyển trong khoảng thời gian chọn." accent="amber" trend={{ value: financeTrend(currentTotals.paid, previousTotals.paid), label: 'so với kỳ trước' }} />
       </section>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-[1.7fr_1fr]">
+      <div className="mt-5 grid gap-4">
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-4">
             <h2 className="font-semibold text-slate-900">Doanh thu và lợi nhuận theo thời gian</h2>
             <p className="mt-1 text-xs text-slate-500">Di chuột lên các điểm để xem giá trị cụ thể.</p>
           </div>
-          <FinanceTrendChart points={[...pointsByKey.values()]} />
+          <FinanceTrendChart points={[...pointsByKey.values()]} grouping={grouping} />
         </section>
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="mb-4 font-semibold text-slate-900">Cơ cấu tài chính</h2>
-          <FinanceComposition values={[
-            { label: 'Doanh thu hoa hồng', amount: currentTotals.commission, color: '#e11d48' },
-            { label: 'Chi phí vận chuyển', amount: currentTotals.shipping, color: '#f59e0b' },
-            { label: 'Chi phí vận hành', amount: currentTotals.operating, color: '#0f766e' },
-            { label: 'Lợi nhuận ước tính', amount: Math.max(currentTotals.profit, 0), color: '#7c3aed' },
-          ]} />
+          <FinanceComposition
+            revenue={currentTotals.commission}
+            profit={currentTotals.profit}
+          />
         </section>
       </div>
 

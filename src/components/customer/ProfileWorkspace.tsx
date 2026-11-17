@@ -202,6 +202,7 @@ export function ProfileWorkspace({
   const [showAllOrders, setShowAllOrders] = useState(false);
   const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? null;
   const [showAllRegistrations, setShowAllRegistrations] = useState(false);
+  const [payingRegistrationId, setPayingRegistrationId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [changing, setChanging] = useState(false);
@@ -311,6 +312,25 @@ export function ProfileWorkspace({
       router.refresh();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Không thể hủy đăng ký.');
+    }
+  };
+
+  const payRegistration = async (registration: ProfileRegistration) => {
+    setPayingRegistrationId(registration.id);
+    setNotice('');
+    try {
+      const response = await fetch('/api/workshops/registrations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ registrationId: registration.id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(getApiErrorMessage(result.error, 'Không thể tạo thanh toán workshop.'));
+      if (typeof result.redirectUrl !== 'string') throw new Error('Không nhận được liên kết thanh toán.');
+      window.location.assign(result.redirectUrl);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Không thể tạo thanh toán workshop.');
+      setPayingRegistrationId(null);
     }
   };
 
@@ -435,6 +455,7 @@ export function ProfileWorkspace({
                     <p className="mt-2 text-sm font-semibold text-[#1d4d38]">{formatMoney(registration.amount)}</p>
                   </div>
                   <div className="flex gap-2">
+                    {registration.status === 'PENDING' && <button type="button" disabled={payingRegistrationId === registration.id} onClick={() => void payRegistration(registration)} className="h-10 rounded-lg bg-[#1d4d38] px-3 text-sm font-semibold text-white transition hover:bg-[#173d30] disabled:opacity-50">{payingRegistrationId === registration.id ? 'Đang chuyển...' : 'Thanh toán'}</button>}
                     <button type="button" onClick={() => setSelectedRegistration(registration)} className="h-10 rounded-lg border border-[#bdd3c3] px-4 text-sm font-semibold text-[#1d6043] transition hover:bg-[#edf5ee]">Chi tiết</button>
                     {registration.status === 'COMPLETED' && workshop?.slug && <Link href={`/workshops/${workshop.slug}#reviews`} className="inline-flex h-10 items-center rounded-lg bg-[#1d4d38] px-3 text-sm font-semibold text-white hover:bg-[#173d30]">Đánh giá</Link>}
                     {cancellable && <button type="button" onClick={() => void cancelRegistration(registration)} className="h-10 rounded-lg border border-[#e5c4ba] px-3 text-sm font-semibold text-[#91463b] transition hover:bg-[#fcf0ed]">Hủy</button>}

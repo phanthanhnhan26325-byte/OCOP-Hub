@@ -6,16 +6,24 @@ export const dynamic = 'force-dynamic';
 
 export default async function ProductsPage({ searchParams }: PageProps<'/products'>) {
   const sp = await searchParams;
-  const q = typeof sp.q === 'string' ? sp.q : '';
+  const q = typeof sp.q === 'string' ? sp.q.trim().slice(0, 100) : '';
+  const keywords = q.match(/[\p{L}\p{N}]+/gu) ?? [];
   const supabase = await supabaseServer();
 
   let query = supabase
     .from('products')
-    .select('id, name, slug, price, classifications, product_categories(name), product_variants(id, label, price), short_description, product_images(url, sort_order), partner_profiles(business_name), product_availability(available_qty, reserved_qty, supply_status)')
+    .select('id, name, slug, price, classifications, product_categories(name), product_variants(id, label, price), short_description, description, product_images(url, sort_order), partner_profiles(business_name), product_availability(available_qty, reserved_qty, supply_status)')
     .eq('status', 'APPROVED')
     .order('created_at', { ascending: false })
     .limit(48);
-  if (q) query = query.or(`name.ilike.%${q}%,short_description.ilike.%${q}%`);
+  if (keywords.length > 0) {
+    const keywordFilters = keywords
+      .map((keyword) => `or(name.ilike.%${keyword}%,short_description.ilike.%${keyword}%,description.ilike.%${keyword}%)`)
+      .join(',');
+    query = query.or(`and(${keywordFilters})`);
+  } else if (q) {
+    query = query.eq('name', q);
+  }
   const { data: products, error } = await query;
   if (error) throw new Error(error.message);
 
@@ -25,7 +33,9 @@ export default async function ProductsPage({ searchParams }: PageProps<'/product
       <form className="mt-4 flex max-w-md gap-2" action="/products">
         <input
           name="q"
+          type="search"
           defaultValue={q}
+          maxLength={100}
           placeholder="Tìm sản phẩm..."
           className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
         />

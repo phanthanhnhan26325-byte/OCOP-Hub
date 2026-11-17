@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
+import { CollapsibleSidebar } from '@/components/shared/CollapsibleSidebar';
 
 type IconName =
   | 'dashboard'
@@ -51,9 +52,9 @@ const groups: SidebarGroup[] = [
     label: 'QUẢN LÝ TÀI KHOẢN',
     icon: 'accounts',
     links: [
+      { href: '/admin/users', label: 'Tài khoản & phân quyền', icon: 'permissions' },
       { href: '/admin/users?role=CUSTOMER', label: 'Khách hàng', icon: 'customer' },
       { href: '/admin/users?role=PARTNER', label: 'Doanh nghiệp đối tác', icon: 'partner' },
-      { href: '/admin/users', label: 'Tài khoản & phân quyền', icon: 'permissions' },
     ],
   },
   {
@@ -194,7 +195,7 @@ export function AdminSidebar() {
     : activeGroup ? [activeGroup] : [];
 
   return (
-    <aside className="w-full shrink-0 md:w-64">
+    <CollapsibleSidebar id="admin-navigation-panel">
       <nav
         aria-label="Điều hướng quản trị"
         className="max-h-[55vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:sticky md:top-24 md:max-h-[calc(100vh-7rem)]"
@@ -273,6 +274,6 @@ export function AdminSidebar() {
           })}
         </div>
       </nav>
-    </aside>
+    </CollapsibleSidebar>
   );
 }

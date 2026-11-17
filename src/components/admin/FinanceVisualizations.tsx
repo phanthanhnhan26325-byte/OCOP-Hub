@@ -9,7 +9,42 @@ export interface FinanceChartPoint {
   profit: number;
 }
 
-export function FinanceTrendChart({ points }: { points: FinanceChartPoint[] }) {
+function formatFinanceAxisLabel(label: string, grouping: string) {
+  if (grouping === 'year') return label;
+
+  if (grouping === 'quarter') {
+    const match = /^(\d{4})-Q([1-4])$/.exec(label);
+    return match ? `Q${match[2]}/${match[1].slice(-2)}` : label;
+  }
+
+  if (grouping === 'week') {
+    const match = /^(\d{4})-W(\d{2})$/.exec(label);
+    return match ? `T${match[2]}/${match[1].slice(-2)}` : label;
+  }
+
+  if (grouping === 'month') {
+    const match = /^(\d{4})-(\d{2})$/.exec(label);
+    return match ? `${match[2]}/${match[1].slice(-2)}` : label;
+  }
+
+  const date = new Date(`${label}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime())
+    ? label
+    : new Intl.DateTimeFormat('vi-VN', {
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit',
+        timeZone: 'UTC',
+      }).format(date);
+}
+
+export function FinanceTrendChart({
+  points,
+  grouping,
+}: {
+  points: FinanceChartPoint[];
+  grouping: string;
+}) {
   if (points.length === 0) {
     return <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Chưa có dữ liệu trong khoảng thời gian này.</p>;
   }
@@ -22,6 +57,7 @@ export function FinanceTrendChart({ points }: { points: FinanceChartPoint[] }) {
   const bottom = 48;
   const chartWidth = width - left - right;
   const chartHeight = height - top - bottom;
+  const tickStep = Math.max(1, Math.ceil((points.length - 1) / 7));
   const values = points.flatMap((point) => [
     point.gmv, point.commission, point.shipping, point.profit,
   ]);
@@ -77,8 +113,10 @@ export function FinanceTrendChart({ points }: { points: FinanceChartPoint[] }) {
             );
           })}
           {points.map((point, index) => (
+            index % tickStep !== 0 && index !== points.length - 1 ? null :
             <text key={point.label} x={x(index)} y={height - 18} textAnchor="middle" fill="#64748b" fontSize="10">
-              {point.label}
+              <title>{point.label}</title>
+              {formatFinanceAxisLabel(point.label, grouping)}
             </text>
           ))}
         </svg>
@@ -88,73 +126,87 @@ export function FinanceTrendChart({ points }: { points: FinanceChartPoint[] }) {
 }
 
 export function FinanceComposition({
-  values,
+  revenue,
+  profit,
 }: {
-  values: { label: string; amount: number; color: string }[];
+  revenue: number;
+  profit: number;
 }) {
-  const positiveValues = values.filter((entry) => entry.amount > 0);
-  const total = positiveValues.reduce((sum, entry) => sum + entry.amount, 0);
-  if (total <= 0) {
-    return <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Chưa có khoản thu/chi được ghi nhận trong kỳ.</p>;
+  const hasLoss = profit < 0;
+  const rows = [
+    { label: 'Doanh thu hoa hồng', amount: Math.max(revenue, 0), color: '#e11d48' },
+    {
+      label: hasLoss ? 'Lỗ ước tính' : 'Lợi nhuận ước tính',
+      amount: Math.abs(profit),
+      color: hasLoss ? '#dc2626' : '#7c3aed',
+    },
+  ];
+  const pieValues = rows.filter((entry) => entry.amount > 0);
+  const pieTotal = pieValues.reduce((sum, entry) => sum + entry.amount, 0);
+  if (pieTotal <= 0 || pieValues.length === 0) {
+    return <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Chưa có doanh thu hoa hồng hoặc lợi nhuận được ghi nhận trong kỳ.</p>;
   }
-  const circumference = 2 * Math.PI * 58;
-  const segments = positiveValues.reduce<{
-    label: string;
-    amount: number;
-    color: string;
-    length: number;
-    offset: number;
-  }[]>((result, entry) => {
-    const offset = result.length > 0
-      ? result[result.length - 1].offset + result[result.length - 1].length
-      : 0;
-    result.push({
+  const percentageByLabel = new Map<string, number>();
+  let roundedTotal = 0;
+  pieValues.forEach((entry, index) => {
+    const percentage = index === pieValues.length - 1
+      ? 100 - roundedTotal
+      : Number((entry.amount / pieTotal * 100).toFixed(1));
+    percentageByLabel.set(entry.label, percentage);
+    roundedTotal += percentage;
+  });
+  const segments = pieValues.map((entry, index) => {
+    const previousAmount = pieValues
+      .slice(0, index)
+      .reduce((sum, previous) => sum + previous.amount, 0);
+    const startAngle = -Math.PI / 2 + previousAmount / pieTotal * Math.PI * 2;
+    const endAngle = startAngle + entry.amount / pieTotal * Math.PI * 2;
+    const startX = 100 + 88 * Math.cos(startAngle);
+    const startY = 100 + 88 * Math.sin(startAngle);
+    const endX = 100 + 88 * Math.cos(endAngle);
+    const endY = 100 + 88 * Math.sin(endAngle);
+    const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+    return {
       ...entry,
-      length: circumference * entry.amount / total,
-      offset,
-    });
-    return result;
-  }, []);
+      path: `M 100 100 L ${startX} ${startY} A 88 88 0 ${largeArc} 1 ${endX} ${endY} Z`,
+    };
+  });
 
   return (
-    <div className="flex flex-col items-center gap-6 sm:flex-row">
-      <svg viewBox="0 0 160 160" className="h-44 w-44 shrink-0" role="img" aria-label="Cơ cấu tài chính trong kỳ">
-        <circle cx="80" cy="80" r="58" fill="none" stroke="#f1f5f9" strokeWidth="24" />
-        {segments.map((entry) => {
-          return (
-            <circle
-              key={entry.label}
-              cx="80"
-              cy="80"
-              r="58"
-              fill="none"
-              stroke={entry.color}
-              strokeWidth="24"
-              strokeDasharray={`${entry.length} ${circumference - entry.length}`}
-              strokeDashoffset={-entry.offset}
-              transform="rotate(-90 80 80)"
-            >
-              <title>{`${entry.label}: ${formatVnd(entry.amount)} (${(entry.amount / total * 100).toFixed(1)}%)`}</title>
-            </circle>
-          );
-        })}
-        <text x="80" y="76" textAnchor="middle" fill="#0f172a" fontSize="11" fontWeight="600">Tổng ghi nhận</text>
-        <text x="80" y="94" textAnchor="middle" fill="#0f172a" fontSize="10">{new Intl.NumberFormat('vi-VN', { notation: 'compact' }).format(total)} đ</text>
-      </svg>
-      <ul className="w-full space-y-3">
-        {positiveValues.map((entry) => (
-          <li key={entry.label} className="flex items-center justify-between gap-3 text-sm">
-            <span className="flex min-w-0 items-center gap-2 text-slate-600">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
-              <span className="truncate">{entry.label}</span>
-            </span>
-            <span className="shrink-0 text-right">
-              <span className="block font-medium text-slate-800">{formatVnd(entry.amount)}</span>
-              <span className="text-xs text-slate-500">{(entry.amount / total * 100).toFixed(1)}%</span>
-            </span>
-          </li>
-        ))}
-      </ul>
+    <div className="mx-auto w-full max-w-3xl">
+      <div className="flex flex-col items-center gap-6 sm:flex-row">
+        <div className="shrink-0 text-center">
+          <svg viewBox="0 0 200 200" className="h-48 w-48" role="img" aria-label="Biểu đồ tròn cơ cấu tài chính">
+            {segments.length === 1
+              ? <circle cx="100" cy="100" r="88" fill={segments[0].color}><title>{`${segments[0].label}: ${formatVnd(segments[0].amount)} (100%)`}</title></circle>
+              : segments.map((entry) => (
+                  <path key={entry.label} d={entry.path} fill={entry.color}>
+                    <title>{`${entry.label}: ${formatVnd(entry.amount)} (${percentageByLabel.get(entry.label)}%)`}</title>
+                  </path>
+                ))}
+          </svg>
+          <p className="mt-1 text-xs text-slate-500">
+            Tổng doanh thu và {hasLoss ? 'lỗ' : 'lợi nhuận'} · {formatVnd(pieTotal)}
+          </p>
+        </div>
+        <ul className="w-full space-y-3">
+          {rows.map((entry) => (
+            <li key={entry.label} className="flex items-center justify-between gap-3 text-sm">
+              <span className="flex min-w-0 items-center gap-2 text-slate-600">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
+                <span className="truncate">{entry.label}</span>
+              </span>
+              <span className="shrink-0 text-right">
+                <span className="block font-medium text-slate-800">{formatVnd(entry.amount)}</span>
+                <span className="text-xs text-slate-500">{(percentageByLabel.get(entry.label) ?? 0).toFixed(1)}%</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <p className="mt-4 text-xs text-slate-500">
+        Tỷ lệ là phần của mỗi chỉ số trên tổng doanh thu hoa hồng và {hasLoss ? 'lỗ' : 'lợi nhuận'} ước tính.
+      </p>
     </div>
   );
 }

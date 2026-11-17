@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { CollapsibleSidebar } from '@/components/shared/CollapsibleSidebar';
 
 export type ProfileTabId = 'overview' | 'personal' | 'orders' | 'workshops';
 
@@ -79,7 +80,7 @@ export function ProfileSidebar({ activeTab, onTabChange }: { activeTab: ProfileT
     : activeGroup ? [activeGroup] : [];
 
   return (
-    <aside className="w-full shrink-0 md:w-64">
+    <CollapsibleSidebar id="profile-navigation-panel">
       <nav
         aria-label="Điều hướng hồ sơ"
         className="max-h-[55vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:sticky md:top-24 md:max-h-[calc(100vh-7rem)]"
@@ -157,6 +158,6 @@ export function ProfileSidebar({ activeTab, onTabChange }: { activeTab: ProfileT
           })}
         </div>
       </nav>
-    </aside>
+    </CollapsibleSidebar>
   );
 }

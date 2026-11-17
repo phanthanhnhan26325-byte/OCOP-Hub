@@ -44,6 +44,15 @@ export default async function PaymentResultPage({ searchParams }: PageProps<'/pa
       .maybeSingle()
     : { data: null, error: null };
   if (orderError) throw new Error(orderError.message);
+  const { data: registration, error: registrationError } = payment?.purpose === 'WORKSHOP_REGISTRATION'
+    ? await supabase
+      .from('workshop_registrations')
+      .select('id, code, status')
+      .eq('id', payment.reference_id)
+      .eq('customer_id', user.id)
+      .maybeSingle()
+    : { data: null, error: null };
+  if (registrationError) throw new Error(registrationError.message);
   const paymentSuccessful = payment?.status === 'PAID';
 
   return (
@@ -59,6 +68,9 @@ export default async function PaymentResultPage({ searchParams }: PageProps<'/pa
           {paymentSuccessful && order && (
             <p className="mt-2 text-sm text-slate-600">Đơn hàng {order.code} đã được thanh toán.</p>
           )}
+          {paymentSuccessful && registration && (
+            <p className="mt-2 text-sm text-slate-600">Đăng ký workshop {registration.code} đã được thanh toán.</p>
+          )}
           <p className="mt-2 text-slate-600">Số tiền: {formatVnd(payment.amount)}</p>
           <p className="text-sm text-slate-500">Mã giao dịch: {payment.id}</p>
           <p className="text-xs text-slate-400">
@@ -73,10 +85,19 @@ export default async function PaymentResultPage({ searchParams }: PageProps<'/pa
                 Quay lại trang chủ
               </Link>
             </div>
+          ) : paymentSuccessful && registration ? (
+            <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+              <Link href="/profile" className="rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700">
+                Xem workshop của tôi
+              </Link>
+              <Link href="/" className="rounded-lg border border-slate-200 px-4 py-2 hover:bg-slate-50">
+                Quay lại trang chủ
+              </Link>
+            </div>
           ) : (
             <div className="mt-6 flex justify-center gap-3">
-              <Link href="/orders" className="rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700">
-                Xem đơn hàng
+              <Link href={payment?.purpose === 'WORKSHOP_REGISTRATION' ? '/profile' : '/orders'} className="rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700">
+                {payment?.purpose === 'WORKSHOP_REGISTRATION' ? 'Quay lại hồ sơ' : 'Xem đơn hàng'}
               </Link>
               <Link href="/" className="rounded-lg border border-slate-200 px-4 py-2 hover:bg-slate-50">
                 Trang chủ

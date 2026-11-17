@@ -110,7 +110,7 @@ export default async function AdminFinanceRevenue({
       <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="font-semibold">Xu hướng tài chính</h2>
         <p className="mb-4 mt-1 text-xs text-slate-500">GMV, phí, chi phí và lợi nhuận được nhóm theo {grouping === 'day' ? 'ngày' : grouping === 'week' ? 'tuần' : grouping === 'month' ? 'tháng' : grouping === 'quarter' ? 'quý' : 'năm'}.</p>
-        <FinanceTrendChart points={[...pointsByKey.values()]} />
+        <FinanceTrendChart points={[...pointsByKey.values()]} grouping={grouping} />
       </section>
 
       <div className="mt-5 flex flex-wrap items-end justify-between gap-3">
