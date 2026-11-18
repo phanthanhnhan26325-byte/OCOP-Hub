@@ -17,6 +17,9 @@ interface NotificationItem {
 function notificationHref(item: NotificationItem, roles: string[]) {
   if (item.type === 'product_review_request') return '/admin/products';
   if (item.type === 'workshop_review_request') return '/admin/workshops';
+  if (item.type === 'settlement_request_submitted' && roles.includes('ADMIN')) {
+    return '/admin/finance/reconciliation#settlement-requests';
+  }
   if (item.type === 'order_placed' && roles.includes('ADMIN')) return '/admin/orders';
   if (item.ref_type === 'partner_order') return '/partner/orders';
   if (item.ref_type === 'order') return '/orders';
