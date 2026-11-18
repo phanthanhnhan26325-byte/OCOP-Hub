@@ -31,3 +31,12 @@ export async function withSignedOrderEvidence<T extends { evidence_path: string 
     return { ...request, evidence_url: data.signedUrl };
   }));
 }
+
+export function isWithinOrderReturnWindow(
+  shipment: { delivered_at: string | null } | { delivered_at: string | null }[] | null,
+  history: { to_status: string; created_at: string }[],
+) {
+  const deliveredAt = (Array.isArray(shipment) ? shipment[0] : shipment)?.delivered_at
+    ?? history.filter(item => item.to_status === 'DELIVERED').map(item => item.created_at).sort()[0];
+  return Boolean(deliveredAt && Date.now() < Date.parse(deliveredAt) + 72 * 60 * 60 * 1000);
+}

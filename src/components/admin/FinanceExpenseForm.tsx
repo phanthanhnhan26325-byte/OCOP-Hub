@@ -9,7 +9,6 @@ function localDateTimeNow() {
 }
 
 export function FinanceExpenseForm() {
-  const [expenseType, setExpenseType] = useState<'SHIPPING' | 'OPERATING'>('SHIPPING');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [incurredAt, setIncurredAt] = useState(localDateTimeNow);
@@ -32,7 +31,7 @@ export function FinanceExpenseForm() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                expenseType,
+                expenseType: 'OPERATING',
                 description,
                 amount: Number(amount),
                 incurredAt: new Date(incurredAt).toISOString(),
@@ -58,13 +57,6 @@ export function FinanceExpenseForm() {
         });
       }}
     >
-      <label className="text-xs font-medium text-slate-600">
-        Loại chi phí
-        <select value={expenseType} onChange={(event) => setExpenseType(event.target.value as 'SHIPPING' | 'OPERATING')} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
-          <option value="SHIPPING">Vận chuyển thực tế</option>
-          <option value="OPERATING">Chi phí vận hành</option>
-        </select>
-      </label>
       <label className="text-xs font-medium text-slate-600">
         Số tiền (VND)
         <input required min={1} step={1} type="number" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />

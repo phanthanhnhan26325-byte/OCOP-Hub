@@ -11,6 +11,7 @@ export async function POST(req: NextRequest) {
     const body = z
       .object({
         paymentId: z.string().uuid(),
+        childOrderId: z.string().uuid().nullable().optional(),
         amount: z.number().int().positive(),
         reason: z.string().trim().min(3).max(500),
         transferReference: z.string().trim().min(3).max(200),
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest) {
       p_admin: admin.id,
       p_payment: body.data.paymentId,
       p_amount: body.data.amount,
+      p_child_order: body.data.childOrderId ?? null,
       p_reason: body.data.reason,
       p_transfer_reference: body.data.transferReference,
     });

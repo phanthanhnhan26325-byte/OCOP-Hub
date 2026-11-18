@@ -31,17 +31,12 @@ function scopeSnapshot(snapshot: FinanceSnapshot, partnerId: string): FinanceSna
 }
 
 function totals(snapshot: FinanceSnapshot, partnerScoped: boolean) {
-  const productGmv = snapshot.orders.reduce((sum, order) => sum + Number(order.subtotal), 0);
-  const workshopGmv = snapshot.workshopRegistrations.reduce((sum, registration) => sum + Number(registration.amount), 0);
+  const productGmv = snapshot.orders.reduce((sum, order) => sum + Number(order.subtotal) - order.refunded_share, 0);
+  const workshopGmv = snapshot.workshopRegistrations.reduce((sum, registration) => sum + Number(registration.amount) - registration.refund, 0);
   const gmv = productGmv + workshopGmv;
-  const shippingCollected = snapshot.orders.reduce((sum, order) => sum + Number(order.shipping_fee), 0);
-  const refunds = snapshot.orders.reduce((sum, order) => sum + order.refunded_share, 0);
   const workshopCommission = snapshot.workshopRegistrations.reduce((sum, registration) => sum + Number(registration.platform_fee), 0);
   const productCommission = snapshot.orders.reduce((sum, order) => sum + order.commission, 0);
   const commission = productCommission + workshopCommission;
-  const shipping = snapshot.expenses
-    .filter((expense) => expense.expense_type === 'SHIPPING')
-    .reduce((sum, expense) => sum + Number(expense.amount), 0);
   const operating = snapshot.expenses
     .filter((expense) => expense.expense_type === 'OPERATING')
     .reduce((sum, expense) => sum + Number(expense.amount), 0);
@@ -54,13 +49,10 @@ function totals(snapshot: FinanceSnapshot, partnerScoped: boolean) {
     productGmv,
     workshopGmv,
     gmv,
-    customerCollected: gmv + shippingCollected - refunds,
-    refunds,
     commission,
-    businessReceivable: Math.max(gmv - refunds - commission, 0),
-    shipping,
+    businessReceivable: gmv - commission,
     operating,
-    profit: commission - (partnerScoped ? 0 : shipping + operating),
+    profit: commission - (partnerScoped ? 0 : operating),
     payable,
     paid,
   };
@@ -130,33 +122,32 @@ export default async function AdminFinanceDashboard({
 
   const pointsByKey = new Map<string, FinanceChartPoint>();
   for (const key of financeBucketDates(range, grouping)) {
-    pointsByKey.set(key, { label: key, gmv: 0, commission: 0, shipping: 0, operating: 0, profit: 0 });
+    pointsByKey.set(key, { label: key, gmv: 0, commission: 0, operating: 0, profit: 0 });
   }
   for (const order of snapshot.orders) {
-    const key = financeGroupKey(order.placed_at, grouping);
+    const key = financeGroupKey(order.recognized_at, grouping);
     const point = pointsByKey.get(key);
     if (point) {
-      point.gmv += Number(order.subtotal);
+      point.gmv += Number(order.subtotal) - order.refunded_share;
       point.commission += order.commission;
       point.profit += order.commission;
     }
   }
   for (const registration of snapshot.workshopRegistrations) {
-    const key = financeGroupKey(registration.created_at, grouping);
+    const key = financeGroupKey(registration.recognized_at, grouping);
     const point = pointsByKey.get(key);
     if (point) {
-      point.gmv += Number(registration.amount);
+      point.gmv += Number(registration.amount) - registration.refund;
       point.commission += Number(registration.platform_fee);
       point.profit += Number(registration.platform_fee);
     }
   }
   for (const expense of snapshot.expenses) {
     if (partnerScoped) continue;
-    const key = financeGroupKey(expense.incurred_at.slice(0, 10), grouping);
+    const key = financeGroupKey(expense.incurred_at, grouping);
     const point = pointsByKey.get(key);
     if (point) {
-      if (expense.expense_type === 'SHIPPING') point.shipping += Number(expense.amount);
-      else point.operating += Number(expense.amount);
+      point.operating += Number(expense.amount);
       point.profit -= Number(expense.amount);
     }
   }
@@ -177,18 +168,21 @@ export default async function AdminFinanceDashboard({
       workshopCount: 0,
     };
     group.gmv += Number(registration.amount);
+    group.refunds += registration.refund;
     group.commission += Number(registration.platform_fee);
-    group.workshopCount += 1;
+    if (!registration.refund) group.workshopCount += 1;
     groupsByPartner.set(group.partnerId, group);
   }
   const groups = [...groupsByPartner.values()].sort((a, b) => b.gmv - a.gmv);
   const partners: FinancePartnerRow[] = groups.map((group) => {
-    const statement = snapshot.statements.find((item) => item.partner_id === group.partnerId);
+    const statements = snapshot.statements.filter((item) => item.partner_id === group.partnerId);
+    const statement = statements[0];
     const payable = statement
-      ? Math.max(Number(statement.net_payable) - (snapshot.paidByStatement[statement.id] ?? 0), 0)
+      ? statements.reduce((sum, item) => sum + Math.max(Number(item.net_payable) - (snapshot.paidByStatement[item.id] ?? 0), 0), 0)
       : Math.max(group.gmv - group.refunds - group.commission, 0);
     return {
       ...group,
+      gmv: group.gmv - group.refunds,
       payable,
       status: statement ? statementLabels[statement.status] ?? statement.status : 'Chưa đối soát',
       statementId: statement?.id ?? null,
@@ -205,7 +199,7 @@ export default async function AdminFinanceDashboard({
   }>();
   for (const order of snapshot.orders) {
     const partnerName = firstFinanceRelation(order.partner_profiles)?.business_name ?? 'Doanh nghiệp';
-    const subtotal = Number(order.subtotal);
+    const subtotal = order.original_subtotal;
     for (const item of order.order_items ?? []) {
       const key = `${order.partner_id}:${item.product_id}`;
       const row = productRowsById.get(key) ?? {
@@ -219,8 +213,8 @@ export default async function AdminFinanceDashboard({
       };
       const itemRevenue = Number(item.line_total);
       const share = subtotal > 0 ? itemRevenue / subtotal : 0;
-      row.quantity += item.qty;
-      row.revenue += itemRevenue;
+      if (!order.refunded_share) row.quantity += item.qty;
+      row.revenue += Number(order.subtotal) * share;
       row.refunds += order.refunded_share * share;
       row.commission += order.commission * share;
       productRowsById.set(key, row);
@@ -244,8 +238,8 @@ export default async function AdminFinanceDashboard({
       revenue: 0,
       commission: 0,
     };
-    row.registrations += 1;
-    row.revenue += Number(registration.amount);
+    if (!registration.refund) row.registrations += 1;
+    row.revenue += Number(registration.amount) - registration.refund;
     row.commission += Number(registration.platform_fee);
     workshopRowsById.set(row.id, row);
   }
@@ -271,14 +265,12 @@ export default async function AdminFinanceDashboard({
       </p>
 
       <section aria-label="Chỉ số tài chính" className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <FinanceCard title="Tiền khách đã thanh toán" value={formatVnd(currentTotals.customerCollected)} caption="Sản phẩm + workshop + vận chuyển − hoàn tiền." accent="emerald" trend={{ value: financeTrend(currentTotals.customerCollected, previousTotals.customerCollected), label: 'so với kỳ trước' }} />
         <FinanceCard title="GMV sản phẩm + workshop" value={formatVnd(currentTotals.gmv)} caption={`Sản phẩm ${formatVnd(currentTotals.productGmv)} · Workshop ${formatVnd(currentTotals.workshopGmv)}.`} accent="emerald" trend={{ value: financeTrend(currentTotals.gmv, previousTotals.gmv), label: 'so với kỳ trước' }} />
-        <FinanceCard title="Phí sàn giữ lại (10%)" value={formatVnd(currentTotals.commission)} caption="Phí sản phẩm đã ghi nhận và phí workshop 10%, sau phần hoàn." accent="rose" trend={{ value: financeTrend(currentTotals.commission, previousTotals.commission), label: 'so với kỳ trước' }} />
-        <FinanceCard title="Doanh nghiệp được nhận (ước tính)" value={formatVnd(currentTotals.businessReceivable)} caption="Doanh thu gộp − hoàn tiền − phí sàn; chưa trừ các payout đã chuyển." accent="blue" trend={{ value: financeTrend(currentTotals.businessReceivable, previousTotals.businessReceivable), label: 'so với kỳ trước' }} />
+        <FinanceCard title="Phí sàn giữ lại (10%)" value={formatVnd(currentTotals.commission)} caption="10% tiền hàng và workshop đủ điều kiện, sau phần hoàn." accent="rose" trend={{ value: financeTrend(currentTotals.commission, previousTotals.commission), label: 'so với kỳ trước' }} />
+        <FinanceCard title="Doanh nghiệp được nhận (ước tính)" value={formatVnd(currentTotals.businessReceivable)} caption="GMV sau hoàn − phí sàn, trước khi trừ các khoản đã chi." accent="blue" trend={{ value: financeTrend(currentTotals.businessReceivable, previousTotals.businessReceivable), label: 'so với kỳ trước' }} />
         <FinanceCard title="Doanh thu sản phẩm" value={formatVnd(currentTotals.productGmv)} caption="Giá trị đơn sản phẩm đủ điều kiện trong kỳ." accent="emerald" trend={{ value: financeTrend(currentTotals.productGmv, previousTotals.productGmv), label: 'so với kỳ trước' }} />
         <FinanceCard title="Doanh thu workshop" value={formatVnd(currentTotals.workshopGmv)} caption="Đăng ký workshop đã thanh toán và đồng bộ." accent="blue" trend={{ value: financeTrend(currentTotals.workshopGmv, previousTotals.workshopGmv), label: 'so với kỳ trước' }} />
-        <FinanceCard title="Lợi nhuận ước tính" value={formatVnd(currentTotals.profit)} caption={partnerScoped ? 'Phí sàn của doanh nghiệp; chưa phân bổ chi phí chung.' : 'Phí sàn − vận chuyển − chi phí vận hành được ghi nhận.'} accent="violet" trend={{ value: financeTrend(currentTotals.profit, previousTotals.profit), label: 'so với kỳ trước' }} />
-        <FinanceCard title="Chi phí vận chuyển" value={formatVnd(currentTotals.shipping)} caption={partnerScoped ? 'Chi phí toàn sàn; không phân bổ theo doanh nghiệp.' : 'Chi phí vận chuyển thực tế do Admin ghi nhận.'} accent="blue" trend={{ value: financeTrend(currentTotals.shipping, previousTotals.shipping), label: 'so với kỳ trước' }} />
+        <FinanceCard title="Lợi nhuận ước tính" value={formatVnd(currentTotals.profit)} caption={partnerScoped ? 'Phí sàn của doanh nghiệp; chưa phân bổ chi phí chung.' : 'Phí sàn − chi phí vận hành được ghi nhận.'} accent="violet" trend={{ value: financeTrend(currentTotals.profit, previousTotals.profit), label: 'so với kỳ trước' }} />
         <FinanceCard title="Chi phí vận hành" value={formatVnd(currentTotals.operating)} caption={partnerScoped ? 'Chi phí toàn sàn; không phân bổ theo doanh nghiệp.' : 'Các khoản vận hành được Admin ghi nhận.'} accent="amber" trend={{ value: financeTrend(currentTotals.operating, previousTotals.operating), label: 'so với kỳ trước' }} />
         <FinanceCard title="Công nợ phải trả doanh nghiệp" value={formatVnd(currentTotals.payable)} caption="Số còn lại trên các kỳ đối soát thuộc khoảng thời gian chọn." accent="violet" trend={{ value: financeTrend(currentTotals.payable, previousTotals.payable), label: 'so với kỳ trước' }} />
         <FinanceCard title="Tổng tiền đã chi trả" value={formatVnd(currentTotals.paid)} caption="Các payout có thời điểm chuyển trong khoảng thời gian chọn." accent="amber" trend={{ value: financeTrend(currentTotals.paid, previousTotals.paid), label: 'so với kỳ trước' }} />
@@ -324,7 +316,7 @@ export default async function AdminFinanceDashboard({
                   <td className="px-4 py-3 whitespace-nowrap text-right">{formatVnd(row.revenue)}</td>
                   <td className="px-4 py-3 whitespace-nowrap text-right">{formatVnd(row.refunds)}</td>
                   <td className="px-4 py-3 whitespace-nowrap text-right">{formatVnd(row.commission)}</td>
-                  <td className="px-4 py-3 whitespace-nowrap text-right font-medium">{formatVnd(Math.max(row.revenue - row.refunds - row.commission, 0))}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-right font-medium">{formatVnd(row.revenue - row.refunds - row.commission)}</td>
                 </tr>
               ))}
               {productRows.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Không có sản phẩm đủ điều kiện trong kỳ này.</td></tr>}
@@ -341,7 +333,7 @@ export default async function AdminFinanceDashboard({
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] text-left text-sm">
             <thead className="bg-slate-50 text-xs font-medium text-slate-500">
-              <tr><th className="px-4 py-3">Workshop</th><th className="px-4 py-3">Doanh nghiệp</th><th className="px-4 py-3 text-right">Lượt đăng ký</th><th className="px-4 py-3 text-right">Doanh thu gộp</th><th className="px-4 py-3 text-right">Phí sàn</th><th className="px-4 py-3 text-right">DN nhận ước tính</th></tr>
+              <tr><th className="px-4 py-3">Workshop</th><th className="px-4 py-3">Doanh nghiệp</th><th className="px-4 py-3 text-right">Lượt đăng ký</th><th className="px-4 py-3 text-right">Doanh thu sau hoàn</th><th className="px-4 py-3 text-right">Phí sàn</th><th className="px-4 py-3 text-right">DN nhận ước tính</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {workshopRows.map((row) => (
@@ -351,7 +343,7 @@ export default async function AdminFinanceDashboard({
                   <td className="px-4 py-3 text-right">{row.registrations.toLocaleString('vi-VN')}</td>
                   <td className="px-4 py-3 whitespace-nowrap text-right">{formatVnd(row.revenue)}</td>
                   <td className="px-4 py-3 whitespace-nowrap text-right">{formatVnd(row.commission)}</td>
-                  <td className="px-4 py-3 whitespace-nowrap text-right font-medium">{formatVnd(Math.max(row.revenue - row.commission, 0))}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-right font-medium">{formatVnd(row.revenue - row.commission)}</td>
                 </tr>
               ))}
               {workshopRows.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Không có workshop đủ điều kiện trong kỳ này.</td></tr>}

@@ -14,12 +14,6 @@ export type DashboardPayment = {
   created_at?: string;
   payment_transactions: { type: string; status: string; created_at: string }[];
 };
-export type DashboardWorkshopRegistration = {
-  id: string;
-  amount: number | string;
-  platform_fee: number | string;
-  status: string;
-};
 export type DashboardStatement = { net_payable: number | string; status: string; payouts: { amount: number | string }[] };
 export type DashboardWorkshopSession = { id: string; workshop_id: string; starts_at: string; ends_at: string; status: string };
 
@@ -33,60 +27,6 @@ export function monthBounds(month: string) {
   const start = new Date(Date.UTC(year, value - 1, 1) - 7 * 60 * 60 * 1000);
   const end = new Date(Date.UTC(year, value, 1) - 7 * 60 * 60 * 1000);
   return { start, end };
-}
-
-function paidAt(payment: DashboardPayment) {
-  const transactions = payment.payment_transactions.filter(transaction => transaction.type === 'PAYMENT' && transaction.status === 'SUCCESS');
-  return transactions.length
-    ? Math.min(...transactions.map(transaction => new Date(transaction.created_at).getTime()))
-    : payment.status === 'PAID' && payment.created_at ? new Date(payment.created_at).getTime() : NaN;
-}
-
-export function productFinancials(
-  orders: DashboardOrder[],
-  payments: DashboardPayment[],
-  parentSubtotals: Record<string, number>,
-  month: string,
-) {
-  const { start, end } = monthBounds(month);
-  const paymentByParent = new Map(payments.map(payment => [payment.reference_id, payment]));
-  return orders.reduce((totals, order) => {
-    const payment = paymentByParent.get(order.parent_order_id);
-    const timestamp = payment ? paidAt(payment) : NaN;
-    if (order.status !== 'COMPLETED' || !Number.isFinite(timestamp) || timestamp < start.getTime() || timestamp >= end.getTime()) return totals;
-
-    const subtotal = Number(order.subtotal);
-    const parentSubtotal = parentSubtotals[order.parent_order_id] ?? subtotal;
-    const refund = Number(payment?.refunded_amount ?? 0);
-    const refundShare = parentSubtotal > 0 ? Math.min(subtotal, refund * subtotal / parentSubtotal) : 0;
-    const fee = subtotal > 0 ? Math.max(0, Number(order.platform_fee) * (1 - refundShare / subtotal)) : 0;
-    totals.expenses += fee;
-    totals.netRevenue += Math.max(subtotal - refundShare - fee, 0);
-    return totals;
-  }, { expenses: 0, netRevenue: 0 });
-}
-
-export function workshopFinancials(
-  registrations: DashboardWorkshopRegistration[],
-  payments: DashboardPayment[],
-  month: string,
-) {
-  const { start, end } = monthBounds(month);
-  const paymentByRegistration = new Map(payments.filter(payment =>
-    payment.status === 'PAID' && payment.business_sync_status === 'SYNCED',
-  ).map(payment => [payment.reference_id, payment]));
-  return registrations.reduce((totals, registration) => {
-    const payment = paymentByRegistration.get(registration.id);
-    if (!payment || !['CONFIRMED', 'COMPLETED'].includes(registration.status)) return totals;
-    const timestamp = paidAt(payment);
-    if (!Number.isFinite(timestamp) || timestamp < start.getTime() || timestamp >= end.getTime()) return totals;
-
-    const amount = Number(registration.amount);
-    const fee = Number(registration.platform_fee);
-    totals.expenses += fee;
-    totals.netRevenue += Math.max(amount - fee, 0);
-    return totals;
-  }, { expenses: 0, netRevenue: 0 });
 }
 
 export function orderActivityCounts(

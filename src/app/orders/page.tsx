@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/rbac';
 import { supabaseServer } from '@/lib/supabase/server';
 import { formatDate, formatVnd } from '@/lib/money';
 import { CustomerOrderActions } from '@/components/customer/CustomerOrderActions';
-import { withSignedOrderEvidence } from '@/modules/orders/order-service-requests';
+import { isWithinOrderReturnWindow, withSignedOrderEvidence } from '@/modules/orders/order-service-requests';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +19,7 @@ export default async function OrdersPage() {
   const supabase = await supabaseServer();
   const { data: parents, error } = await supabase
     .from('orders')
-    .select('id, code, status, total, placed_at, orders_child:orders!parent_order_id(id, code, status, total, partner_id, shipping_address, partner_profiles(business_name), order_items(id, product_id, product_name, qty, unit_price, products(slug)), order_service_requests(id, order_id, request_type, status, reason, evidence_path, contact_phone, partner_response, refund_amount, refund_status, created_at))')
+    .select('id, code, status, total, placed_at, orders_child:orders!parent_order_id(id, code, status, total, partner_id, shipping_address, order_shipments(delivered_at), order_status_history(to_status, created_at), partner_profiles(business_name), order_items(id, product_id, product_name, qty, unit_price, products(slug)), order_service_requests(id, order_id, request_type, status, reason, evidence_path, contact_phone, partner_response, refund_amount, refund_status, created_at))')
     .eq('customer_id', user.id)
     .eq('order_level', 'PARENT')
     .order('placed_at', { ascending: false });
@@ -49,6 +49,7 @@ export default async function OrdersPage() {
     payment: paymentsByParent.get(parent.id) ?? null,
     orders_child: await Promise.all((parent.orders_child ?? []).map(async child => ({
       ...child,
+      canRequestReturn: isWithinOrderReturnWindow(child.order_shipments, child.order_status_history ?? []),
       order_service_requests: await withSignedOrderEvidence(child.order_service_requests ?? []),
     }))),
   })));
@@ -107,6 +108,7 @@ export default async function OrdersPage() {
                           status={c.status}
                           phone={typeof c.shipping_address?.phone === 'string' ? c.shipping_address.phone : ''}
                           requests={c.order_service_requests ?? []}
+                          canRequestReturn={c.canRequestReturn}
                         />
                       </div>
                     ))}

@@ -4,6 +4,7 @@ import { handleApiError, requireRole } from '@/lib/rbac';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 const bodySchema = z.object({
+  childOrderId: z.string().uuid().nullable().optional(),
   amount: z.number().int().positive(),
   reason: z.string().trim().min(3).max(1000),
   receivedVia: z.string().trim().max(100).optional(),
@@ -26,6 +27,7 @@ export async function POST(
       p_admin: admin.id,
       p_order: id,
       p_amount: body.data.amount,
+      p_child_order: body.data.childOrderId ?? null,
       p_reason: body.data.reason,
       p_received_via: body.data.receivedVia ?? null,
       p_transfer_reference: body.data.transferReference,

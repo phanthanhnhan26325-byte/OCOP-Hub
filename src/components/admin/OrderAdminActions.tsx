@@ -19,10 +19,12 @@ export function OrderAdminActions({
   orderId,
   orderStatus,
   payments,
+  childOrders,
 }: {
   orderId: string;
   orderStatus: string;
   payments: OrderPayment[];
+  childOrders: { id: string; code: string; status: string }[];
 }) {
   const [paymentId, setPaymentId] = useState('');
   const [amount, setAmount] = useState('');
@@ -31,6 +33,7 @@ export function OrderAdminActions({
   const [cancelSource, setCancelSource] = useState('');
   const [returnReason, setReturnReason] = useState('');
   const [returnSource, setReturnSource] = useState('');
+  const [returnChildId, setReturnChildId] = useState('');
   const [returnAmount, setReturnAmount] = useState('');
   const [returnReference, setReturnReference] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -49,7 +52,8 @@ export function OrderAdminActions({
     ? Math.max(0, Number(returnPayment.amount) - Number(returnPayment.refunded_amount))
     : 0;
   const canCancel = ['CREATED', 'PAYMENT_PENDING'].includes(orderStatus);
-  const canReturn = ['DELIVERED', 'COMPLETED', 'PARTIALLY_REFUNDED'].includes(orderStatus);
+  const returnableChildren = childOrders.filter(child => ['DELIVERED', 'COMPLETED', 'PARTIALLY_REFUNDED', 'RETURNED'].includes(child.status));
+  const canReturn = returnableChildren.length > 0;
 
   async function submit(
     endpoint: string,
@@ -195,11 +199,13 @@ export function OrderAdminActions({
           className="rounded-xl border border-rose-200 bg-rose-50/40 p-4"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!returnAmount) return;
+            const amount = Number(returnAmount || returnableAmount);
+            if (amount <= 0) return;
             void submit(
               `/api/admin/orders/${orderId}/returns`,
               {
-                amount: Number(returnAmount),
+                amount,
+                childOrderId: returnChildId || null,
                 reason: returnReason,
                 receivedVia: returnSource || null,
                 transferReference: returnReference,
@@ -214,6 +220,16 @@ export function OrderAdminActions({
           <p className="mt-3 text-xs text-slate-600">
             Còn có thể hoàn: {returnableAmount.toLocaleString('vi-VN')} đ · {returnPayment?.status}
           </p>
+          {childOrders.length > 1 && (
+            <label className="mt-3 block text-xs font-medium text-slate-600">
+              Phần đơn cần hoàn
+              <select value={returnChildId} onChange={(event) => setReturnChildId(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                <option value="">Toàn bộ đơn gộp</option>
+                {returnableChildren.map(child => <option key={child.id} value={child.id}>{child.code}</option>)}
+              </select>
+            </label>
+          )}
           <label className="mt-3 block text-xs font-medium text-slate-600">
             Số tiền hoàn
             <input

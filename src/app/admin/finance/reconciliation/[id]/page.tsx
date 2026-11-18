@@ -16,6 +16,7 @@ interface SettlementItem {
   ref_id: string;
   amount: number | string;
   direction: string;
+  recognized_fee: number | string | null;
   created_at: string;
 }
 
@@ -61,7 +62,7 @@ export default async function AdminFinanceStatementDetail({
   const supabase = await supabaseServer();
   const { data: statementData, error: statementError } = await supabase
     .from('settlement_statements')
-    .select('id, partner_id, period_start, period_end, gross_amount, refund_amount, platform_fee, adjustments, net_payable, status, confirmed_at, created_at, partner_profiles(business_name), payouts(id, amount, method, ref_no, transferred_at, recorded_by, evidence_path), settlement_items(id, ref_type, ref_id, amount, direction, created_at)')
+    .select('id, partner_id, period_start, period_end, gross_amount, refund_amount, platform_fee, adjustments, net_payable, status, confirmed_at, created_at, partner_profiles(business_name), payouts(id, amount, method, ref_no, transferred_at, recorded_by, evidence_path), settlement_items(id, ref_type, ref_id, amount, direction, created_at, recognized_fee)')
     .eq('id', id)
     .maybeSingle();
   if (statementError) throw new Error(statementError.message);
@@ -85,6 +86,7 @@ export default async function AdminFinanceStatementDetail({
     settlement_items: SettlementItem[] | null;
   };
   const items = statement.settlement_items ?? [];
+  const feesByRef = new Map(items.map(item => [item.ref_id, item.recognized_fee]));
   const orderIds = items.filter((item) => item.ref_type === 'SUB_ORDER').map((item) => item.ref_id);
   const registrationIds = items
     .filter((item) => item.ref_type === 'WORKSHOP_REGISTRATION')
@@ -144,7 +146,7 @@ export default async function AdminFinanceStatementDetail({
           <span className="rounded-full bg-violet-50 px-3 py-1 text-sm font-medium text-violet-700">{statement.status}</span>
         </div>
         <dl className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div><dt className="text-xs text-slate-500">Tổng giá trị hàng hóa</dt><dd className="mt-1 font-semibold">{formatVnd(statement.gross_amount)}</dd></div>
+          <div><dt className="text-xs text-slate-500">Tổng tiền hàng và workshop</dt><dd className="mt-1 font-semibold">{formatVnd(statement.gross_amount)}</dd></div>
           <div><dt className="text-xs text-slate-500">Hoa hồng nền tảng</dt><dd className="mt-1 font-semibold">{formatVnd(statement.platform_fee)}</dd></div>
           <div><dt className="text-xs text-slate-500">Hoàn tiền</dt><dd className="mt-1 font-semibold text-rose-700">−{formatVnd(statement.refund_amount)}</dd></div>
           <div><dt className="text-xs text-slate-500">Điều chỉnh</dt><dd className="mt-1 font-semibold">{formatVnd(additionalAdjustments)}</dd></div>
@@ -176,7 +178,7 @@ export default async function AdminFinanceStatementDetail({
                     <td className="px-4 py-3">{item.qty}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{formatVnd(item.unit_price)}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{formatVnd(item.line_total)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{index === 0 ? formatVnd(order.platform_fee) : '—'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{index === 0 ? formatVnd(feesByRef.get(order.id) ?? order.platform_fee) : '—'}</td>
                   </tr>
                 ));
               })}
@@ -207,8 +209,8 @@ export default async function AdminFinanceStatementDetail({
                     <td className="px-4 py-3">{workshop?.title ?? 'Workshop'}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{session?.starts_at ? formatDate(session.starts_at) : '—'}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-right font-medium">{formatVnd(registration.amount)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right">{formatVnd(registration.platform_fee)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right font-medium">{formatVnd(Math.max(Number(registration.amount) - Number(registration.platform_fee), 0))}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-right">{formatVnd(feesByRef.get(registration.id) ?? registration.platform_fee)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-right font-medium">{formatVnd(Math.max(Number(registration.amount) - Number(feesByRef.get(registration.id) ?? registration.platform_fee), 0))}</td>
                   </tr>
                 );
               })}
