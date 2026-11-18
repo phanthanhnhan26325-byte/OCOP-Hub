@@ -55,11 +55,15 @@ export function FinanceDateFilters({
   from,
   to,
   grouping,
+  partners,
+  partnerId,
 }: {
   range: string;
   from: string;
   to: string;
   grouping?: string;
+  partners?: { user_id: string; business_name: string }[];
+  partnerId?: string;
 }) {
   return (
     <form action="" method="get" className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3">
@@ -93,6 +97,17 @@ export function FinanceDateFilters({
             <option value="month">Tháng</option>
             <option value="quarter">Quý</option>
             <option value="year">Năm</option>
+          </select>
+        </label>
+      )}
+      {partners && (
+        <label className="text-xs font-medium text-slate-600">
+          Doanh nghiệp
+          <select name="partner" defaultValue={partnerId ?? ''} className="mt-1 block max-w-64 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+            <option value="">Tất cả doanh nghiệp</option>
+            {partners.map((partner) => (
+              <option key={partner.user_id} value={partner.user_id}>{partner.business_name}</option>
+            ))}
           </select>
         </label>
       )}

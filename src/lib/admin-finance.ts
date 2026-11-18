@@ -35,6 +35,19 @@ export interface FinanceOrder {
   commission: number;
 }
 
+export interface FinanceWorkshopRegistration {
+  id: string;
+  code: string;
+  amount: number | string;
+  platform_fee: number | string;
+  created_at: string;
+  starts_at: string;
+  workshop_id: string;
+  workshop_title: string;
+  partner_id: string;
+  partner_name: string;
+}
+
 export interface FinanceExpense {
   id: string;
   expense_type: 'SHIPPING' | 'OPERATING';
@@ -83,6 +96,7 @@ export interface FinanceRecovery {
 
 export interface FinanceSnapshot {
   orders: FinanceOrder[];
+  workshopRegistrations: FinanceWorkshopRegistration[];
   expenses: FinanceExpense[];
   statements: FinanceStatement[];
   payouts: FinancePayout[];
@@ -158,20 +172,49 @@ export async function loadFinanceSnapshot(
 ): Promise<FinanceSnapshot> {
   const start = isoDayStart(range.from);
   const end = isoDayStart(addDays(range.to, 1));
-  const { data: orderData, error: orderError } = await supabase
-    .from('orders')
-    .select('id, code, parent_order_id, partner_id, status, subtotal, platform_fee, shipping_fee, placed_at, partner_profiles(business_name), order_items(product_id, product_name, qty, line_total, products(category_id, product_categories(name)))')
-    .eq('order_level', 'CHILD')
-    .in('status', ['DELIVERED', 'COMPLETED'])
-    .gte('placed_at', start)
-    .lt('placed_at', end)
-    .order('placed_at', { ascending: false })
-    .limit(5000);
+  const [orderResult, workshopRegistrationResult] = await Promise.all([
+    supabase
+      .from('orders')
+      .select('id, code, parent_order_id, partner_id, status, subtotal, platform_fee, shipping_fee, placed_at, partner_profiles(business_name), order_items(product_id, product_name, qty, line_total, products(category_id, product_categories(name)))')
+      .eq('order_level', 'CHILD')
+      .gte('placed_at', start)
+      .lt('placed_at', end)
+      .order('placed_at', { ascending: false })
+      .limit(5000),
+    supabase
+      .from('workshop_registrations')
+      .select('id, code, amount, platform_fee, created_at, workshop_sessions(starts_at, workshops(id, title, partner_id, partner_profiles(business_name)))')
+      .in('status', ['CONFIRMED', 'COMPLETED'])
+      .gte('created_at', start)
+      .lt('created_at', end)
+      .order('created_at', { ascending: false })
+      .limit(5000),
+  ]);
+  const { data: orderData, error: orderError } = orderResult;
+  const { data: workshopRegistrationData, error: workshopRegistrationError } = workshopRegistrationResult;
   if (orderError) throw new Error(orderError.message);
+  if (workshopRegistrationError) throw new Error(workshopRegistrationError.message);
 
   const candidateOrders = (orderData ?? []) as unknown as Omit<FinanceOrder, 'refunded_share' | 'commission'>[];
   const parentIds = [...new Set(candidateOrders.map((order) => order.parent_order_id))];
-  const [allChildrenResult, paymentsResult, expensesResult, statementsResult, payoutsResult, recoveriesResult] =
+  const candidateWorkshopRegistrations = (workshopRegistrationData ?? []) as unknown as {
+    id: string;
+    code: string;
+    amount: number | string;
+    platform_fee: number | string;
+    created_at: string;
+    workshop_sessions: Relation<{
+      starts_at: string;
+      workshops: Relation<{
+        id: string;
+        title: string;
+        partner_id: string;
+        partner_profiles: Relation<{ business_name: string }>;
+      }>;
+    }>;
+  }[];
+  const workshopRegistrationIds = candidateWorkshopRegistrations.map((registration) => registration.id);
+  const [allChildrenResult, paymentsResult, workshopPaymentsResult, expensesResult, statementsResult, payoutsResult, recoveriesResult] =
     await Promise.all([
       parentIds.length > 0
         ? supabase.from('orders').select('parent_order_id, subtotal').eq('order_level', 'CHILD').in('parent_order_id', parentIds).limit(10000)
@@ -179,13 +222,16 @@ export async function loadFinanceSnapshot(
       parentIds.length > 0
         ? supabase.from('payments').select('id, reference_id, status, refunded_amount, business_sync_status').eq('purpose', 'ORDER').in('reference_id', parentIds).in('status', ['PAID', 'PARTIALLY_REFUNDED', 'REFUNDED']).eq('business_sync_status', 'SYNCED')
         : Promise.resolve({ data: [], error: null }),
+      workshopRegistrationIds.length > 0
+        ? supabase.from('payments').select('reference_id').eq('purpose', 'WORKSHOP_REGISTRATION').in('reference_id', workshopRegistrationIds).eq('status', 'PAID').eq('business_sync_status', 'SYNCED')
+        : Promise.resolve({ data: [], error: null }),
       supabase.from('financial_expenses').select('id, expense_type, description, amount, incurred_at, reference_code, recorded_by').gte('incurred_at', start).lt('incurred_at', end).order('incurred_at', { ascending: false }).limit(5000),
       supabase.from('settlement_statements').select('id, partner_id, period_start, period_end, gross_amount, refund_amount, platform_fee, adjustments, net_payable, status, created_at').gte('period_start', range.from).lte('period_end', range.to).order('created_at', { ascending: false }).limit(5000),
       supabase.from('payouts').select('id, statement_id, partner_id, amount, method, ref_no, transferred_at, recorded_by').gte('transferred_at', start).lt('transferred_at', end).order('transferred_at', { ascending: false }).limit(5000),
       supabase.from('partner_recoveries').select('id, partner_id, refund_id, order_id, amount, recovered_amount, created_at, partner_profiles(business_name)').order('created_at', { ascending: false }).limit(5000),
     ]);
 
-  for (const result of [allChildrenResult, paymentsResult, expensesResult, statementsResult, payoutsResult, recoveriesResult]) {
+  for (const result of [allChildrenResult, paymentsResult, workshopPaymentsResult, expensesResult, statementsResult, payoutsResult, recoveriesResult]) {
     if (result.error) throw new Error(result.error.message);
   }
 
@@ -230,9 +276,32 @@ export async function loadFinanceSnapshot(
         : 0;
       return { ...order, refunded_share: refundShare, commission };
     });
+  const paidWorkshopRegistrationIds = new Set(
+    (workshopPaymentsResult.data ?? []).map((payment) => payment.reference_id),
+  );
+  const workshopRegistrations = candidateWorkshopRegistrations.flatMap((registration) => {
+    if (!paidWorkshopRegistrationIds.has(registration.id)) return [];
+    const session = firstFinanceRelation(registration.workshop_sessions);
+    const workshop = firstFinanceRelation(session?.workshops);
+    if (!session || !workshop) return [];
+    const partner = firstFinanceRelation(workshop.partner_profiles);
+    return [{
+      id: registration.id,
+      code: registration.code,
+      amount: registration.amount,
+      platform_fee: registration.platform_fee,
+      created_at: registration.created_at,
+      starts_at: session.starts_at,
+      workshop_id: workshop.id,
+      workshop_title: workshop.title,
+      partner_id: workshop.partner_id,
+      partner_name: partner?.business_name ?? 'Doanh nghiệp',
+    }];
+  });
 
   return {
     orders,
+    workshopRegistrations,
     expenses: (expensesResult.data ?? []) as unknown as FinanceExpense[],
     statements,
     payouts: (payoutsResult.data ?? []) as unknown as FinancePayout[],

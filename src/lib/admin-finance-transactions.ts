@@ -5,6 +5,7 @@ import {
   type FinanceRange,
   type FinanceRecovery,
   type FinanceOrder,
+  type FinanceWorkshopRegistration,
 } from '@/lib/admin-finance';
 import { supabaseServer } from '@/lib/supabase/server';
 
@@ -43,6 +44,7 @@ export async function loadFinanceTransactions(
   payouts: FinancePayout[],
   recoveries: FinanceRecovery[],
   limit = 1000,
+  workshopRegistrations: FinanceWorkshopRegistration[] = [],
 ): Promise<FinanceTransaction[]> {
   const [{ data: transactionData, error: transactionError }, { data: refundData, error: refundError }, { data: adjustmentData, error: adjustmentError }] =
     await Promise.all([
@@ -141,18 +143,23 @@ export async function loadFinanceTransactions(
   for (const transaction of transactions.filter((entry) => entry.type === 'PAYMENT')) {
     const payment = paymentById.get(transaction.payment_id);
     const orderCode = payment?.purpose === 'ORDER' ? orderCodes.get(payment.reference_id) ?? '' : '';
+    const workshop = payment?.purpose === 'WORKSHOP_REGISTRATION'
+      ? workshopRegistrations.find((registration) => registration.id === payment.reference_id)
+      : null;
     rows.push({
       id: `payment-${transaction.id}`,
       at: transaction.created_at,
       code: transaction.provider_txn_id,
-      type: transaction.type === 'PAYMENT' ? 'Thanh toán đơn hàng' : 'Hoàn tiền khách hàng',
-      related: payment?.purpose === 'ORDER' ? `Đơn ${orderCode || payment.reference_id.slice(0, 8)}` : 'Thanh toán workshop',
+      type: payment?.purpose === 'ORDER' ? 'Thanh toán đơn hàng' : 'Thanh toán workshop',
+      related: payment?.purpose === 'ORDER'
+        ? `Đơn ${orderCode || payment.reference_id.slice(0, 8)}`
+        : workshop?.workshop_title ?? 'Thanh toán workshop',
       description: transaction.provider,
       amount: Number(transaction.amount),
       direction: transaction.type === 'PAYMENT' ? 'IN' : 'OUT',
       status: transaction.status,
       orderCode,
-      partnerName: '',
+      partnerName: workshop?.partner_name ?? '',
       source: `payment_transactions:${transaction.id}`,
     });
   }
@@ -189,6 +196,24 @@ export async function loadFinanceTransactions(
       orderCode: order.code,
       partnerName: firstFinanceRelation(order.partner_profiles)?.business_name ?? '',
       source: `orders:${order.id}`,
+    });
+  }
+
+  for (const registration of workshopRegistrations) {
+    if (Number(registration.platform_fee) <= 0) continue;
+    rows.push({
+      id: `workshop-commission-${registration.id}`,
+      at: registration.created_at,
+      code: `FEE-${registration.code}`,
+      type: 'Thu hoa hồng workshop',
+      related: registration.workshop_title,
+      description: 'Phí nền tảng workshop đã chụp khi đăng ký',
+      amount: Number(registration.platform_fee),
+      direction: 'IN',
+      status: 'Đã ghi nhận',
+      orderCode: '',
+      partnerName: registration.partner_name,
+      source: `workshop_registrations:${registration.id}`,
     });
   }
 

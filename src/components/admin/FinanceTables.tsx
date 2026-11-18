@@ -9,6 +9,7 @@ export interface FinancePartnerRow {
   partnerId: string;
   name: string;
   orderCount: number;
+  workshopCount?: number;
   gmv: number;
   commission: number;
   payable: number;
@@ -80,13 +81,18 @@ export function FinancePartnerTable({
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const showWorkshopCount = rows.some((row) => row.workshopCount !== undefined);
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-100 p-4">
         <div>
           <h2 className="font-semibold text-slate-900">Doanh thu theo doanh nghiệp</h2>
-          <p className="mt-1 text-xs text-slate-500">GMV là tổng giá trị hàng hóa; hoa hồng lấy từ phí đã lưu trên đơn, không tính GMV thành doanh thu OCOP Hub.</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {showWorkshopCount
+              ? 'GMV gồm doanh thu sản phẩm và workshop đã thanh toán; phí sàn áp dụng cho cả hai nguồn.'
+              : 'GMV là tổng giá trị hàng hóa; hoa hồng lấy từ phí đã lưu trên đơn, không tính GMV thành doanh thu OCOP Hub.'}
+          </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
           <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Tìm doanh nghiệp" className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
@@ -107,11 +113,12 @@ export function FinancePartnerTable({
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[790px] text-left text-sm">
+        <table className="w-full min-w-[890px] text-left text-sm">
           <thead className="bg-slate-50 text-xs font-medium text-slate-500">
             <tr>
               <th className="px-4 py-3">Doanh nghiệp</th>
-              <th className="px-4 py-3">Đơn thành công</th>
+              <th className="px-4 py-3">Đơn SP</th>
+              {showWorkshopCount && <th className="px-4 py-3">Lượt workshop</th>}
               <th className="px-4 py-3">GMV</th>
               {showCommission && <th className="px-4 py-3">Hoa hồng thực tế</th>}
               <th className="px-4 py-3">Phải trả ước tính</th>
@@ -124,6 +131,7 @@ export function FinancePartnerTable({
               <tr key={row.partnerId}>
                 <td className="px-4 py-3 font-medium text-slate-800">{row.name}</td>
                 <td className="px-4 py-3">{row.orderCount.toLocaleString('vi-VN')}</td>
+                {showWorkshopCount && <td className="px-4 py-3">{(row.workshopCount ?? 0).toLocaleString('vi-VN')}</td>}
                 <td className="px-4 py-3 whitespace-nowrap">{formatVnd(row.gmv)}</td>
                 {showCommission && <td className="px-4 py-3 whitespace-nowrap">{formatVnd(row.commission)}</td>}
                 <td className="px-4 py-3 whitespace-nowrap">{formatVnd(row.payable)}</td>
@@ -135,7 +143,7 @@ export function FinancePartnerTable({
                 </td>
               </tr>
             ))}
-            {visible.length === 0 && <tr><td colSpan={showCommission ? 7 : 6} className="px-4 py-8 text-center text-slate-500">Không có dữ liệu doanh nghiệp phù hợp.</td></tr>}
+            {visible.length === 0 && <tr><td colSpan={(showCommission ? 7 : 6) + (showWorkshopCount ? 1 : 0)} className="px-4 py-8 text-center text-slate-500">Không có dữ liệu doanh nghiệp phù hợp.</td></tr>}
           </tbody>
         </table>
       </div>

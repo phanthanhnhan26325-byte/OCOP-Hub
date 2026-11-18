@@ -44,6 +44,7 @@ export default async function AdminFinanceTransactions({
     snapshot.payouts,
     snapshot.recoveries,
     5000,
+    snapshot.workshopRegistrations,
   );
   const filtered = allTransactions.filter((row) =>
     (!type || row.type === type)

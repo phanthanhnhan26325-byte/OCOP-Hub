@@ -33,6 +33,24 @@ interface SettlementOrder {
   }[] | null;
 }
 
+interface SettlementWorkshopRegistration {
+  id: string;
+  code: string;
+  amount: number | string;
+  platform_fee: number | string;
+  workshop_sessions: {
+    starts_at: string;
+    workshops: { title: string } | { title: string }[] | null;
+  } | {
+    starts_at: string;
+    workshops: { title: string } | { title: string }[] | null;
+  }[] | null;
+}
+
+function firstRelation<T>(value: T | T[] | null | undefined): T | null {
+  return Array.isArray(value) ? value[0] ?? null : value ?? null;
+}
+
 export default async function AdminFinanceStatementDetail({
   params,
 }: {
@@ -68,12 +86,30 @@ export default async function AdminFinanceStatementDetail({
   };
   const items = statement.settlement_items ?? [];
   const orderIds = items.filter((item) => item.ref_type === 'SUB_ORDER').map((item) => item.ref_id);
-  const { data: orderData, error: orderError } = orderIds.length > 0
-    ? await supabase.from('orders').select('id, code, status, subtotal, platform_fee, order_items(product_name, qty, unit_price, line_total)').in('id', orderIds)
-    : { data: [], error: null };
+  const registrationIds = items
+    .filter((item) => item.ref_type === 'WORKSHOP_REGISTRATION')
+    .map((item) => item.ref_id);
+  const [orderResult, registrationResult] = await Promise.all([
+    orderIds.length > 0
+      ? supabase.from('orders').select('id, code, status, subtotal, platform_fee, order_items(product_name, qty, unit_price, line_total)').in('id', orderIds)
+      : Promise.resolve({ data: [], error: null }),
+    registrationIds.length > 0
+      ? supabase.from('workshop_registrations').select('id, code, amount, platform_fee, workshop_sessions(starts_at, workshops(title))').in('id', registrationIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const { data: orderData, error: orderError } = orderResult;
+  const { data: registrationData, error: registrationError } = registrationResult;
   if (orderError) throw new Error(orderError.message);
+  if (registrationError) throw new Error(registrationError.message);
   const orders = (orderData ?? []) as unknown as SettlementOrder[];
   const ordersById = new Map(orders.map((order) => [order.id, order]));
+  const registrations = (registrationData ?? []) as unknown as SettlementWorkshopRegistration[];
+  const registrationsById = new Map(registrations.map((registration) => [registration.id, registration]));
+  const adjustmentItems = items.filter(
+    (item) => item.ref_type !== 'SUB_ORDER'
+      && item.ref_type !== 'WORKSHOP_REGISTRATION'
+      && item.ref_type !== 'WORKSHOP_COMMISSION',
+  );
   const paid = (statement.payouts ?? []).reduce((sum, payout) => sum + Number(payout.amount), 0);
   const recoveryAmount = items
     .filter((item) => item.ref_type === 'RECOVERY')
@@ -122,7 +158,7 @@ export default async function AdminFinanceStatementDetail({
 
       <section className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-100 p-4">
-          <h2 className="font-semibold">Chi tiết đơn hàng và sản phẩm</h2>
+          <h2 className="font-semibold">Chi tiết doanh thu sản phẩm</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-left text-sm">
@@ -144,7 +180,39 @@ export default async function AdminFinanceStatementDetail({
                   </tr>
                 ));
               })}
-              {orderIds.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Kỳ này chưa có đơn hàng đủ điều kiện.</td></tr>}
+              {orderIds.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Kỳ này chưa có đơn hàng sản phẩm đủ điều kiện.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 p-4">
+          <h2 className="font-semibold">Chi tiết doanh thu workshop</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead className="bg-slate-50 text-xs text-slate-500">
+              <tr><th className="px-4 py-3">Mã đăng ký</th><th className="px-4 py-3">Workshop</th><th className="px-4 py-3">Ngày diễn ra</th><th className="px-4 py-3 text-right">Doanh thu gộp</th><th className="px-4 py-3 text-right">Phí sàn</th><th className="px-4 py-3 text-right">Doanh nghiệp nhận</th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {registrationIds.map((registrationId) => {
+                const registration = registrationsById.get(registrationId);
+                if (!registration) return null;
+                const session = firstRelation(registration.workshop_sessions);
+                const workshop = firstRelation(session?.workshops);
+                return (
+                  <tr key={registration.id}>
+                    <td className="px-4 py-3 font-mono text-xs">{registration.code}</td>
+                    <td className="px-4 py-3">{workshop?.title ?? 'Workshop'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{session?.starts_at ? formatDate(session.starts_at) : '—'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-right font-medium">{formatVnd(registration.amount)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-right">{formatVnd(registration.platform_fee)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-right font-medium">{formatVnd(Math.max(Number(registration.amount) - Number(registration.platform_fee), 0))}</td>
+                  </tr>
+                );
+              })}
+              {registrationIds.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Kỳ này chưa có đăng ký workshop đủ điều kiện.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -153,7 +221,7 @@ export default async function AdminFinanceStatementDetail({
       <section className="mt-4 rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="font-semibold">Điều chỉnh, hoàn tiền và recover</h2>
         <ul className="mt-3 divide-y divide-slate-100">
-          {items.filter((item) => item.ref_type !== 'SUB_ORDER').map((item) => (
+          {adjustmentItems.map((item) => (
             <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
               <span>{item.ref_type} · {item.ref_id.slice(0, 8)} · {item.direction === 'DEBIT' ? 'Khấu trừ' : 'Ghi có'}</span>
               <span className={item.direction === 'DEBIT' ? 'font-semibold text-rose-700' : 'font-semibold text-emerald-700'}>
@@ -161,7 +229,7 @@ export default async function AdminFinanceStatementDetail({
               </span>
             </li>
           ))}
-          {items.every((item) => item.ref_type === 'SUB_ORDER') && <li className="py-3 text-sm text-slate-500">Không có khoản điều chỉnh, hoàn tiền hoặc recover.</li>}
+          {adjustmentItems.length === 0 && <li className="py-3 text-sm text-slate-500">Không có khoản điều chỉnh, hoàn tiền hoặc recover.</li>}
         </ul>
       </section>
 

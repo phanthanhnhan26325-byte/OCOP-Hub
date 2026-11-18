@@ -13,11 +13,14 @@ function firstParam(value: string | string[] | undefined) {
 }
 
 function totals(snapshot: Awaited<ReturnType<typeof loadFinanceSnapshot>>) {
-  const gmv = snapshot.orders.reduce((sum, order) => sum + Number(order.subtotal), 0);
-  const commission = snapshot.orders.reduce((sum, order) => sum + order.commission, 0);
+  const productGmv = snapshot.orders.reduce((sum, order) => sum + Number(order.subtotal), 0);
+  const workshopGmv = snapshot.workshopRegistrations.reduce((sum, registration) => sum + Number(registration.amount), 0);
+  const gmv = productGmv + workshopGmv;
+  const commission = snapshot.orders.reduce((sum, order) => sum + order.commission, 0)
+    + snapshot.workshopRegistrations.reduce((sum, registration) => sum + Number(registration.platform_fee), 0);
   const shipping = snapshot.expenses.filter((item) => item.expense_type === 'SHIPPING').reduce((sum, item) => sum + Number(item.amount), 0);
   const operating = snapshot.expenses.filter((item) => item.expense_type === 'OPERATING').reduce((sum, item) => sum + Number(item.amount), 0);
-  return { gmv, commission, shipping, operating, profit: commission - shipping - operating };
+  return { gmv, workshopGmv, commission, shipping, operating, profit: commission - shipping - operating };
 }
 
 export default async function AdminFinanceRevenue({
@@ -51,6 +54,14 @@ export default async function AdminFinanceRevenue({
     point.commission += order.commission;
     point.profit += order.commission;
   }
+  for (const registration of snapshot.workshopRegistrations) {
+    const point = pointsByKey.get(financeGroupKey(registration.created_at, grouping));
+    if (point) {
+      point.gmv += Number(registration.amount);
+      point.commission += Number(registration.platform_fee);
+      point.profit += Number(registration.platform_fee);
+    }
+  }
   for (const expense of snapshot.expenses) {
     const point = pointsByKey.get(financeGroupKey(expense.incurred_at.slice(0, 10), grouping));
     if (!point) continue;
@@ -72,8 +83,55 @@ export default async function AdminFinanceRevenue({
   }
   const categories = [...categoryTotals.values()].sort((a, b) => b.sales - a.sales);
 
-  const grouped = groupFinanceOrders(snapshot.orders);
-  const partnerRows: FinancePartnerRow[] = grouped.map((partner) => {
+  type PartnerRevenue = ReturnType<typeof groupFinanceOrders>[number] & {
+    workshopCount: number;
+    workshopRevenue: number;
+  };
+  const partnersById = new Map<string, PartnerRevenue>();
+  for (const partner of groupFinanceOrders(snapshot.orders)) {
+    partnersById.set(partner.partnerId, { ...partner, workshopCount: 0, workshopRevenue: 0 });
+  }
+  const workshopsById = new Map<string, {
+    id: string;
+    title: string;
+    partnerName: string;
+    registrations: number;
+    revenue: number;
+    commission: number;
+  }>();
+  for (const registration of snapshot.workshopRegistrations) {
+    const partner = partnersById.get(registration.partner_id) ?? {
+      partnerId: registration.partner_id,
+      name: registration.partner_name,
+      orderCount: 0,
+      gmv: 0,
+      commission: 0,
+      refunds: 0,
+      workshopCount: 0,
+      workshopRevenue: 0,
+    };
+    partner.gmv += Number(registration.amount);
+    partner.commission += Number(registration.platform_fee);
+    partner.workshopCount += 1;
+    partner.workshopRevenue += Number(registration.amount);
+    partnersById.set(partner.partnerId, partner);
+
+    const workshop = workshopsById.get(registration.workshop_id) ?? {
+      id: registration.workshop_id,
+      title: registration.workshop_title,
+      partnerName: registration.partner_name,
+      registrations: 0,
+      revenue: 0,
+      commission: 0,
+    };
+    workshop.registrations += 1;
+    workshop.revenue += Number(registration.amount);
+    workshop.commission += Number(registration.platform_fee);
+    workshopsById.set(workshop.id, workshop);
+  }
+  const partnerRevenue = [...partnersById.values()].sort((a, b) => b.gmv - a.gmv);
+  const workshopRevenue = [...workshopsById.values()].sort((a, b) => b.revenue - a.revenue);
+  const partnerRows: FinancePartnerRow[] = partnerRevenue.map((partner) => {
     const statement = snapshot.statements.find((item) => item.partner_id === partner.partnerId);
     return {
       ...partner,
@@ -88,20 +146,28 @@ export default async function AdminFinanceRevenue({
   });
 
   const exportRows = [
-    ...grouped.map((partner) => ['Doanh nghiệp', partner.name, partner.orderCount, partner.gmv, partner.commission]),
+    ...partnerRevenue.map((partner) => [
+      'Doanh nghiệp',
+      partner.name,
+      `${partner.orderCount} đơn SP · ${partner.workshopCount} lượt workshop`,
+      partner.gmv,
+      partner.commission,
+    ]),
     ...categories.map((category) => ['Nhóm sản phẩm', category.category, category.quantity, category.sales, '']),
+    ...workshopRevenue.map((workshop) => ['Workshop', `${workshop.title} · ${workshop.partnerName}`, workshop.registrations, workshop.revenue, workshop.commission]),
   ];
 
   return (
     <FinanceWorkspace
       active="/admin/finance/revenue"
       title="Doanh thu & lợi nhuận"
-      description="Phân tích GMV, hoa hồng nền tảng, chi phí thực tế và lợi nhuận ước tính; doanh thu đối tác không được tính là doanh thu OCOP Hub."
+      description="Phân tích doanh thu sản phẩm và workshop của doanh nghiệp, hoa hồng nền tảng, chi phí thực tế và lợi nhuận ước tính."
     >
       <FinanceDateFilters range={range.range} from={range.from} to={range.to} grouping={grouping} />
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <FinanceCard title="GMV" value={formatVnd(current.gmv)} caption="Giá trị hàng hóa đủ điều kiện." accent="emerald" trend={{ value: financeTrend(current.gmv, previous.gmv), label: 'so với kỳ trước' }} />
-        <FinanceCard title="Doanh thu hoa hồng" value={formatVnd(current.commission)} caption="Phí nền tảng đã chụp trên đơn, trừ phần hoàn." accent="rose" trend={{ value: financeTrend(current.commission, previous.commission), label: 'so với kỳ trước' }} />
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <FinanceCard title="GMV" value={formatVnd(current.gmv)} caption="Doanh thu sản phẩm và workshop đã thanh toán." accent="emerald" trend={{ value: financeTrend(current.gmv, previous.gmv), label: 'so với kỳ trước' }} />
+        <FinanceCard title="Doanh thu workshop" value={formatVnd(current.workshopGmv)} caption="Đăng ký workshop đã thanh toán và đồng bộ." accent="blue" trend={{ value: financeTrend(current.workshopGmv, previous.workshopGmv), label: 'so với kỳ trước' }} />
+        <FinanceCard title="Phí sàn giữ lại" value={formatVnd(current.commission)} caption="Phí sản phẩm đã ghi nhận và phí workshop 10%, sau phần hoàn." accent="rose" trend={{ value: financeTrend(current.commission, previous.commission), label: 'so với kỳ trước' }} />
         <FinanceCard title="Chi phí vận chuyển" value={formatVnd(current.shipping)} caption="Chỉ chi phí thực tế đã ghi nhận." accent="blue" trend={{ value: financeTrend(current.shipping, previous.shipping), label: 'so với kỳ trước' }} />
         <FinanceCard title="Chi phí vận hành" value={formatVnd(current.operating)} caption="Các khoản vận hành được ghi sổ." accent="amber" trend={{ value: financeTrend(current.operating, previous.operating), label: 'so với kỳ trước' }} />
         <FinanceCard title="Lợi nhuận ước tính" value={formatVnd(current.profit)} caption="Hoa hồng − chi phí vận chuyển − vận hành." accent="violet" trend={{ value: financeTrend(current.profit, previous.profit), label: 'so với kỳ trước' }} />
@@ -116,11 +182,11 @@ export default async function AdminFinanceRevenue({
       <div className="mt-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Báo cáo doanh thu</h2>
-          <p className="mt-1 text-sm text-slate-500">Tệp CSV có BOM, mở trực tiếp bằng Excel; chứa doanh thu theo doanh nghiệp và nhóm sản phẩm.</p>
+          <p className="mt-1 text-sm text-slate-500">Tệp CSV có BOM, mở trực tiếp bằng Excel; chứa doanh thu theo doanh nghiệp, nhóm sản phẩm và workshop.</p>
         </div>
         <FinanceExportButton
           filename={`ocop-finance-${range.from}-${range.to}.csv`}
-          headers={['Loại báo cáo', 'Tên', 'Số đơn / sản phẩm', 'GMV / doanh thu', 'Hoa hồng']}
+          headers={['Loại báo cáo', 'Tên', 'Đơn sản phẩm / lượt workshop', 'GMV / doanh thu', 'Hoa hồng']}
           rows={exportRows}
         />
       </div>
@@ -130,7 +196,7 @@ export default async function AdminFinanceRevenue({
 
       <section className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-100 p-4">
-          <h2 className="font-semibold">Doanh thu theo nhóm sản phẩm</h2>
+          <h2 className="font-semibold">Doanh thu sản phẩm theo nhóm</h2>
           <p className="mt-1 text-xs text-slate-500">Phân nhóm theo danh mục hiện tại của sản phẩm; đơn hàng và giá vẫn lấy từ snapshot đặt hàng.</p>
         </div>
         <div className="overflow-x-auto">
@@ -139,6 +205,33 @@ export default async function AdminFinanceRevenue({
             <tbody className="divide-y divide-slate-100">
               {categories.map((category) => <tr key={category.category}><td className="px-4 py-3 font-medium">{category.category}</td><td className="px-4 py-3">{category.quantity.toLocaleString('vi-VN')}</td><td className="px-4 py-3 font-medium">{formatVnd(category.sales)}</td></tr>)}
               {categories.length === 0 && <tr><td colSpan={3} className="px-4 py-8 text-center text-slate-500">Chưa có doanh thu sản phẩm trong kỳ.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 p-4">
+          <h2 className="font-semibold">Doanh thu theo workshop</h2>
+          <p className="mt-1 text-xs text-slate-500">Chỉ tính đăng ký đã thanh toán, đồng bộ và được xác nhận hoặc hoàn thành; phí sàn là 10%.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead className="bg-slate-50 text-xs text-slate-500">
+              <tr><th className="px-4 py-3">Workshop</th><th className="px-4 py-3">Doanh nghiệp</th><th className="px-4 py-3 text-right">Lượt đăng ký</th><th className="px-4 py-3 text-right">Doanh thu gộp</th><th className="px-4 py-3 text-right">Phí sàn</th><th className="px-4 py-3 text-right">Doanh nghiệp nhận</th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {workshopRevenue.map((workshop) => (
+                <tr key={workshop.id}>
+                  <td className="px-4 py-3 font-medium">{workshop.title}</td>
+                  <td className="px-4 py-3">{workshop.partnerName}</td>
+                  <td className="px-4 py-3 text-right">{workshop.registrations.toLocaleString('vi-VN')}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-right font-medium">{formatVnd(workshop.revenue)}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-right">{formatVnd(workshop.commission)}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-right font-medium">{formatVnd(Math.max(workshop.revenue - workshop.commission, 0))}</td>
+                </tr>
+              ))}
+              {workshopRevenue.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Chưa có doanh thu workshop trong kỳ.</td></tr>}
             </tbody>
           </table>
         </div>

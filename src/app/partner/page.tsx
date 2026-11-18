@@ -1,9 +1,7 @@
 import Link from 'next/link';
-import type { ReactNode } from 'react';
 import { getPartnerDashboard } from '@/modules/partner/dashboard.service';
 import { formatVnd } from '@/lib/money';
 import { SellingApplicationForm } from '@/components/partner/SellingApplicationForm';
-import { RevenueFilter } from '@/components/partner/RevenueFilter';
 import { RecentOrders } from '@/components/partner/RecentOrders';
 import { PartnerIcon, type PartnerIconName } from '@/components/partner/PartnerIcon';
 
@@ -11,12 +9,11 @@ export const dynamic = 'force-dynamic';
 const timeZone = 'Asia/Ho_Chi_Minh';
 const datePart = (value: string, options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('vi-VN', { timeZone, ...options }).format(new Date(value));
 
-function Metric({ label, value, note, badge, href, children }: { label: string; value: string; note: string; badge?: string; href?: string; children?: ReactNode }) {
+function Metric({ label, value, note, badge, href }: { label: string; value: string; note: string; badge?: string; href?: string }) {
   return <section className="partner-panel flex min-h-[180px] flex-col p-5 xl:p-6">
     <div className="flex items-center justify-between gap-3 text-sm partner-muted">{href ? <Link href={href} className="flex w-full items-center justify-between gap-2 hover:text-[#195c46]">{label}<PartnerIcon name="chevron" className="!h-4 !w-4" /></Link> : label}</div>
     <p className="my-5 text-[28px] font-semibold leading-tight tracking-tight sm:text-[30px]">{value}</p>
     <div className="mt-auto flex flex-wrap items-center justify-between gap-2 text-[11px]"><span className="partner-muted">{note}</span>{badge && <span className="rounded-md bg-[#eaf4ee] px-2 py-1.5 text-[#195c46]">{badge}</span>}</div>
-    {children && <div className="mt-3 border-t border-[#edf1ee] pt-3">{children}</div>}
   </section>;
 }
 
@@ -29,9 +26,12 @@ function Task({ icon, title, description, href, action, tone = 'green' }: { icon
   </li>;
 }
 
-export default async function PartnerDashboardPage({ searchParams }: { searchParams: Promise<{ month?: string | string[] }> }) {
+export default async function PartnerDashboardPage({ searchParams }: { searchParams: Promise<{ month?: string | string[]; activityPeriod?: string | string[] }> }) {
   const params = await searchParams;
-  const data = await getPartnerDashboard(typeof params.month === 'string' ? params.month : undefined);
+  const data = await getPartnerDashboard(
+    typeof params.month === 'string' ? params.month : undefined,
+    typeof params.activityPeriod === 'string' ? params.activityPeriod : undefined,
+  );
   const { profile, pending, upcoming } = data;
   const approved = profile?.selling_status === 'APPROVED';
   const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone }).format(data.now));
@@ -56,12 +56,42 @@ export default async function PartnerDashboardPage({ searchParams }: { searchPar
     </section>
     {!approved && <section className="partner-panel mt-6 p-6"><h2 className="text-lg font-semibold">Đăng ký quyền bán hàng</h2><p className="mt-2 text-sm partner-muted">Cung cấp thông tin doanh nghiệp để Admin xét duyệt.</p><SellingApplicationForm existing={profile} /></section>}
     {approved && <>
-      <div className="mt-6 grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Đơn chờ tiếp nhận" value={String(pending.length).padStart(2, '0')} note="Đơn khách đã đặt và thanh toán" badge={`${newToday} đơn mới hôm nay`} href="/partner/orders" />
-        <Metric label="Doanh thu sản phẩm" value={formatVnd(data.revenue)} note="Đơn hoàn thành và khách đã thanh toán" badge={`Tháng ${Number(data.month.slice(5))}/${data.month.slice(0, 4)}`}><RevenueFilter month={data.month} /></Metric>
-        <Metric label="Workshop sắp diễn ra" value={String(upcoming.length).padStart(2, '0')} note="Buổi đã duyệt · trong 30 ngày tới" badge={`${upcoming.reduce((sum, session) => sum + session.registered, 0)} lượt đăng ký`} href="/partner/workshops" />
-        <Metric label="Còn phải thanh toán" value={formatVnd(data.payable)} note="Hệ thống chưa chuyển cho doanh nghiệp" badge={`${data.statementCount} kỳ đã đối soát`} href="/partner/settlements" />
-      </div>
+      <form action="/partner" method="get" className="partner-panel mt-6 flex flex-wrap items-end gap-3 p-4">
+        <label htmlFor="dashboard-month" className="text-xs font-medium">
+          Tháng doanh thu
+          <input id="dashboard-month" name="month" type="month" min="2000-01" max="9999-12" defaultValue={data.month} className="mt-1 block rounded-lg border border-[#dce6e1] bg-white px-3 py-2 text-sm font-normal text-[#195c46]" />
+        </label>
+        <label htmlFor="activity-period" className="text-xs font-medium">
+          Phạm vi số lượng hoạt động
+          <select id="activity-period" name="activityPeriod" defaultValue={data.activityPeriod} className="mt-1 block rounded-lg border border-[#dce6e1] bg-white px-3 py-2 text-sm font-normal">
+            <option value="all">Tổng hiện tại</option>
+            <option value="month">Theo tháng đã chọn</option>
+          </select>
+        </label>
+        <button className="rounded-lg bg-[#195c46] px-4 py-2 text-sm font-medium text-white hover:bg-[#124a37]">Áp dụng</button>
+      </form>
+      <section className="mt-6">
+        <h2 className="mb-3 text-lg font-semibold">Tổng quan tài chính</h2>
+        <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <Metric label="Doanh thu thuần bán hàng" value={formatVnd(data.productRevenue)} note="Đơn hoàn thành · sau hoàn tiền và phí sàn" badge={`Tháng ${Number(data.month.slice(5))}/${data.month.slice(0, 4)}`} />
+          <Metric label="Doanh thu thuần workshop" value={formatVnd(data.workshopRevenue)} note="Đăng ký đã thanh toán · sau phí sàn" badge={`Tháng ${Number(data.month.slice(5))}/${data.month.slice(0, 4)}`} />
+          <Metric label="Tổng chi phí (phí sàn)" value={formatVnd(data.totalExpenses)} note="Phí sàn sản phẩm và workshop trong tháng" badge="10% theo đối soát" />
+          <Metric label="Tổng lợi nhuận ước tính" value={formatVnd(data.totalProfit)} note="Doanh thu thuần sau phí sàn; chưa trừ giá vốn và chi phí riêng" badge={`Tháng ${Number(data.month.slice(5))}/${data.month.slice(0, 4)}`} />
+          <Metric label="Số tiền đã đối soát / chuyển" value={formatVnd(data.paidOut)} note="Tiền thực tế đã chuyển trong tháng đã chọn" badge={`Tháng ${Number(data.month.slice(5))}/${data.month.slice(0, 4)}`} href="/partner/settlements" />
+          <Metric label="Còn phải thanh toán" value={formatVnd(data.payable)} note="Số dư của các kỳ đã xác nhận" badge={`${data.statementCount} kỳ`} href="/partner/settlements" />
+        </div>
+      </section>
+      <section className="mt-6">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <div><h2 className="text-lg font-semibold">Hoạt động kinh doanh</h2><p className="mt-1 text-xs partner-muted">{data.activityPeriod === 'all' ? 'Tổng hiện tại · tất cả thời gian' : `Trong tháng ${Number(data.month.slice(5))}/${data.month.slice(0, 4)}`}</p></div>
+        </div>
+        <div className="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Metric label="Đơn hàng đã xử lý" value={String(data.processedOrders).padStart(2, '0')} note="Đã tiếp nhận, xử lý hoặc hoàn tất" href="/partner/orders" />
+          <Metric label="Đơn hàng chưa xử lý" value={String(data.unprocessedOrders).padStart(2, '0')} note="Khách đã thanh toán · chờ tiếp nhận" badge={`${newToday} đơn mới hôm nay`} href="/partner/orders" />
+          <Metric label="Workshop sắp diễn ra" value={String(data.upcomingWorkshopCount).padStart(2, '0')} note="Buổi tổ chức trong tương lai, không tính buổi đã hủy" badge={`${upcoming.reduce((sum, session) => sum + session.registered, 0)} lượt đăng ký trong 30 ngày`} href="/partner/workshops" />
+          <Metric label="Workshop đã diễn ra" value={String(data.completedWorkshopCount).padStart(2, '0')} note="Buổi đã kết thúc, không tính buổi đã hủy" href="/partner/workshops" />
+        </div>
+      </section>
       <div className="mt-6 grid auto-rows-fr items-stretch gap-6 lg:grid-cols-2">
         <section className="partner-panel min-w-0 px-5 pb-2 pt-6 sm:px-6">
           <div className="flex items-center justify-between gap-3 border-b border-[#eaf0ec] pb-5"><div><h2 className="text-lg font-medium">Cần xử lý</h2><p className="mt-1 text-xs leading-5 partner-muted">Các việc cần bạn ưu tiên hôm nay</p></div><span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-[#fcf3d9] px-2 text-sm font-semibold text-[#9b7418]">{taskCount}</span></div>
@@ -83,7 +113,7 @@ export default async function PartnerDashboardPage({ searchParams }: { searchPar
         </section>
       </div>
       <RecentOrders orders={data.recentOrders} />
-      <p className="mt-5 text-xs leading-6 partner-muted">Khoản còn phải thanh toán đã trừ phí hệ thống, hoàn tiền, điều chỉnh và các khoản đã chuyển theo kỳ đối soát được xác nhận. Doanh thu chỉ tính đơn sản phẩm đã hoàn thành và khách đã thanh toán, theo tháng thanh toán, trước hoàn tiền; không gồm vé workshop.</p>
+      <p className="mt-5 text-xs leading-6 partner-muted">Chi phí ở đây là phí sàn sản phẩm và workshop; lợi nhuận ước tính là doanh thu thuần sau phí sàn, chưa trừ giá vốn hoặc chi phí riêng của doanh nghiệp. Doanh thu thuần tính theo tháng thanh toán sau hoàn tiền (nếu có) và phí sàn; số tiền đã đối soát là khoản thực tế đã chuyển.</p>
     </>}
     {!approved && data.applications.length > 0 && <section className="partner-panel mt-6 p-6"><h2 className="text-lg font-medium">Lịch sử hồ sơ</h2><ul className="mt-4 divide-y divide-[#eaf0ec]">{data.applications.map(application => <li key={application.id} className="py-3 text-sm"><span className="font-medium">{application.status === 'PENDING' ? 'Chờ duyệt' : application.status === 'APPROVED' ? 'Đã duyệt' : 'Bị từ chối'}</span><span className="ml-3 text-xs partner-muted">{datePart(application.created_at, { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>{application.reject_reason && <p className="mt-2 text-xs text-red-700">{application.reject_reason}</p>}</li>)}</ul></section>}
   </div>;
