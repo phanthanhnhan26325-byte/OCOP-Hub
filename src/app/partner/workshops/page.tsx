@@ -6,6 +6,7 @@ import { PartnerIcon } from '@/components/partner/PartnerIcon';
 import { WorkshopDetails } from '@/components/partner/WorkshopDetails';
 import { SubmitWorkshopButton } from '@/components/partner/SubmitWorkshopButton';
 import { DeleteButton } from '@/components/partner/DeleteButton';
+import { countPaidWorkshopRegistrations } from '@/modules/partner/workshop-registration-counts';
 import { nextWorkshopSession, workshopDate, workshopStatuses, workshopStatusTone, type PartnerWorkshop } from '@/modules/partner/workshop-list';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,9 @@ export default async function PartnerWorkshopsPage({ searchParams }: { searchPar
     workshops.push(...data as PartnerWorkshop[]);
     if (data.length < 500) break;
   }
+  const paidCounts = await countPaidWorkshopRegistrations(
+    workshops.flatMap(workshop => workshop.workshop_sessions.map(session => session.id)),
+  );
   const now = new Date();
 
   return <div className="w-full">
@@ -52,12 +56,13 @@ export default async function PartnerWorkshopsPage({ searchParams }: { searchPar
           <tbody className="divide-y divide-[#eaf0ec]">{workshops.map(workshop => {
             const next = nextWorkshopSession(workshop, now);
             const hasRegistrations = workshop.workshop_sessions.some(session => session.workshop_registrations.length > 0);
-            const registered = next?.workshop_registrations.filter(registration => registration.status === 'CONFIRMED').length ?? 0;
+            const registered = workshop.workshop_sessions.reduce((total, session) => total + (paidCounts.get(session.id) ?? 0), 0);
+            const capacity = workshop.workshop_sessions.reduce((total, session) => total + session.capacity, 0);
             return <tr key={workshop.id} id={workshop.id} className="scroll-mt-28 transition hover:bg-[#f7faf8]">
               <td className="px-6 py-5"><div className="flex min-w-56 max-w-80 items-center gap-3">{workshop.cover_image ? <img src={workshop.cover_image} alt={workshop.title} className="h-16 w-16 shrink-0 rounded-xl border border-[#eaf0ec] object-cover" /> : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-[#eaf4ee] text-[#195c46]"><PartnerIcon name="calendar" /></span>}<div className="min-w-0"><p className="font-semibold leading-5">{workshop.title}</p><p className="mt-1 text-xs partner-muted">{workshop.workshop_sessions.length} buổi tổ chức</p>{workshop.status === 'REJECTED' && workshop.reject_reason && <p className="mt-1 line-clamp-2 text-xs text-red-700">{workshop.reject_reason}</p>}</div></div></td>
               <td className="px-6 py-5">{next ? <><p className="whitespace-nowrap text-xs font-medium">{workshopDate(next.starts_at)}</p><p className="mt-1 text-xs partner-muted">{Number(next.fee) === 0 ? 'Miễn phí' : formatVnd(next.fee)} / khách</p></> : <p className="text-xs partner-muted">Chưa có buổi sắp tới</p>}</td>
               <td className="max-w-48 px-6 py-5 text-xs leading-5 partner-muted">{next?.location || '—'}</td>
-              <td className="px-6 py-5">{next ? <><p className="whitespace-nowrap font-medium">{registered}/{next.capacity} chỗ</p><p className="mt-1 text-[11px] partner-muted">Buổi gần nhất</p></> : <span className="partner-muted">—</span>}</td>
+              <td className="px-6 py-5"><p className="whitespace-nowrap font-medium">{registered}/{capacity} chỗ</p><p className="mt-1 text-[11px] partner-muted">Tổng {workshop.workshop_sessions.length} buổi</p></td>
               <td className="px-6 py-5"><span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[11px] font-medium ${workshopStatusTone(workshop.status)}`}><span aria-hidden="true">●</span>{workshopStatuses[workshop.status] ?? workshop.status}</span></td>
               <td className="px-6 py-5"><div className="flex flex-wrap items-start gap-2"><WorkshopDetails workshop={workshop} /><Link href={`/partner/workshops/${workshop.id}/edit`} className="rounded-lg border border-[#cdded5] px-3 py-1.5 text-xs font-medium text-[#195c46] hover:bg-[#eaf4ee]">Sửa</Link>{workshop.status === 'DRAFT' && <SubmitWorkshopButton workshopId={workshop.id} />}<DeleteButton url={`/api/partner/workshops/${workshop.id}`} label="Xóa" disabledReason={hasRegistrations ? 'Workshop đã có lịch sử đăng ký nên không thể xóa.' : undefined} /></div></td>
             </tr>;

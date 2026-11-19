@@ -77,17 +77,17 @@ export default async function AdminFinanceTransactions({
     <FinanceWorkspace
       active="/admin/finance/transactions"
       title="Lịch sử giao dịch"
-      description="Tổng hợp thanh toán, hoa hồng, chi trả, vận chuyển, hoàn tiền, điều chỉnh và các khoản cần recover; mỗi dòng có nguồn dữ liệu."
+      description="Tổng hợp thanh toán, hoa hồng, chi trả, hoàn tiền, điều chỉnh và các khoản cần recover; mỗi dòng có nguồn dữ liệu."
     >
       <FinanceDateFilters range={range.range} from={range.from} to={range.to} />
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <article className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
           <p className="text-sm text-emerald-800">Tiền thu đã ghi nhận</p>
-          <p className="mt-1 text-xl font-bold text-emerald-900">{formatVnd(filtered.filter((row) => row.direction === 'IN' && ['SUCCESS', 'SUCCEEDED', 'COMPLETED', 'Đã ghi nhận'].includes(row.status)).reduce((sum, row) => sum + row.amount, 0))}</p>
+          <p className="mt-1 text-xl font-bold text-emerald-900">{formatVnd(filtered.filter((row) => !row.id.startsWith('commission-') && !row.id.startsWith('workshop-commission-') && row.direction === 'IN' && ['SUCCESS', 'SUCCEEDED', 'COMPLETED', 'Đã ghi nhận'].includes(row.status)).reduce((sum, row) => sum + row.amount, 0))}</p>
         </article>
         <article className="rounded-xl border border-rose-100 bg-rose-50 p-4">
           <p className="text-sm text-rose-800">Tiền chi đã ghi nhận</p>
-          <p className="mt-1 text-xl font-bold text-rose-900">{formatVnd(filtered.filter((row) => row.direction === 'OUT' && ['SUCCESS', 'SUCCEEDED', 'COMPLETED', 'Đã ghi nhận'].includes(row.status)).reduce((sum, row) => sum + row.amount, 0))}</p>
+          <p className="mt-1 text-xl font-bold text-rose-900">{formatVnd(filtered.filter((row) => !row.id.startsWith('commission-') && !row.id.startsWith('workshop-commission-') && row.direction === 'OUT' && ['SUCCESS', 'SUCCEEDED', 'COMPLETED', 'Đã ghi nhận'].includes(row.status)).reduce((sum, row) => sum + row.amount, 0))}</p>
         </article>
         <article className="rounded-xl border border-amber-100 bg-amber-50 p-4">
           <p className="text-sm text-amber-800">Khoản đang thu hồi / chờ xử lý</p>

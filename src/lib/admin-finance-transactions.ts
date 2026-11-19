@@ -27,7 +27,7 @@ export interface FinanceTransaction {
 }
 
 function dayStart(day: string) {
-  return `${day}T00:00:00.000Z`;
+  return new Date(`${day}T00:00:00.000+07:00`).toISOString();
 }
 
 function nextDay(day: string) {
@@ -116,7 +116,7 @@ export async function loadFinanceTransactions(
 
   const orderIds = [...new Set([
     ...payments.filter((payment) => payment.purpose === 'ORDER').map((payment) => payment.reference_id),
-    ...refunds.filter((refund) => refund.ref_type === 'ORDER').map((refund) => refund.ref_id),
+    ...refunds.map((refund) => refund.ref_id),
   ])];
   const [{ data: orderData, error: ordersError }, { data: partnerData, error: partnersError }] = await Promise.all([
     orderIds.length > 0
@@ -165,7 +165,7 @@ export async function loadFinanceTransactions(
   }
 
   for (const refund of refunds) {
-    const orderCode = refund.ref_type === 'ORDER' ? orderCodes.get(refund.ref_id) ?? '' : '';
+    const orderCode = orderCodes.get(refund.ref_id) ?? '';
     rows.push({
       id: `refund-${refund.id}`,
       at: refund.created_at,
@@ -183,15 +183,16 @@ export async function loadFinanceTransactions(
   }
 
   for (const order of orders) {
+    if (!order.commission) continue;
     rows.push({
-      id: `commission-${order.id}`,
-      at: order.placed_at,
+      id: `commission-${order.event_id}`,
+      at: order.recognized_at,
       code: `FEE-${order.code}`,
-      type: 'Thu hoa hồng',
+      type: order.commission < 0 ? 'Giảm hoa hồng do hoàn tiền' : 'Thu hoa hồng',
       related: order.code,
-      description: 'Phí nền tảng đã chụp tại thời điểm đặt hàng',
-      amount: order.commission,
-      direction: 'IN',
+      description: 'Phí nền tảng khi đủ điều kiện đối soát',
+      amount: Math.abs(order.commission),
+      direction: order.commission < 0 ? 'OUT' : 'IN',
       status: 'Đã ghi nhận',
       orderCode: order.code,
       partnerName: firstFinanceRelation(order.partner_profiles)?.business_name ?? '',
@@ -200,16 +201,17 @@ export async function loadFinanceTransactions(
   }
 
   for (const registration of workshopRegistrations) {
-    if (Number(registration.platform_fee) <= 0) continue;
+    const fee = Number(registration.platform_fee);
+    if (!fee) continue;
     rows.push({
-      id: `workshop-commission-${registration.id}`,
-      at: registration.created_at,
+      id: `workshop-commission-${registration.event_id}`,
+      at: registration.recognized_at,
       code: `FEE-${registration.code}`,
-      type: 'Thu hoa hồng workshop',
+      type: fee < 0 ? 'Giảm hoa hồng workshop do hoàn tiền' : 'Thu hoa hồng workshop',
       related: registration.workshop_title,
-      description: 'Phí nền tảng workshop đã chụp khi đăng ký',
-      amount: Number(registration.platform_fee),
-      direction: 'IN',
+      description: 'Phí nền tảng workshop khi thanh toán thành công',
+      amount: Math.abs(fee),
+      direction: fee < 0 ? 'OUT' : 'IN',
       status: 'Đã ghi nhận',
       orderCode: '',
       partnerName: registration.partner_name,
@@ -239,7 +241,7 @@ export async function loadFinanceTransactions(
       id: `expense-${expense.id}`,
       at: expense.incurred_at,
       code: expense.reference_code ?? expense.id,
-      type: expense.expense_type === 'SHIPPING' ? 'Thanh toán vận chuyển' : 'Chi phí vận hành',
+      type: 'Chi phí vận hành',
       related: expense.description,
       description: expense.reference_code ? `Tham chiếu ${expense.reference_code}` : 'Chi phí được Admin ghi nhận',
       amount: Number(expense.amount),
@@ -252,7 +254,7 @@ export async function loadFinanceTransactions(
   }
 
   for (const recovery of recoveries.filter((entry) =>
-    entry.created_at >= dayStart(range.from) && entry.created_at < nextDay(range.to),
+    Date.parse(entry.created_at) >= Date.parse(dayStart(range.from)) && Date.parse(entry.created_at) < Date.parse(nextDay(range.to)),
   )) {
     const outstanding = Number(recovery.amount) - Number(recovery.recovered_amount);
     if (outstanding <= 0) continue;

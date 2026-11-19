@@ -4,6 +4,7 @@ import { requireApprovedPartner } from '@/lib/rbac';
 import { supabaseServer } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { formatVnd } from '@/lib/money';
+import { countPaidWorkshopRegistrations } from '@/modules/partner/workshop-registration-counts';
 import { sessionStatuses, workshopDate, workshopStatuses, workshopStatusTone } from '@/modules/partner/workshop-list';
 
 const tabs = { info: 'Thông tin', schedule: 'Lịch tổ chức', registrations: 'Người đăng ký', history: 'Lịch sử xét duyệt' };
@@ -33,6 +34,7 @@ export default async function PartnerWorkshopDetail({ params, searchParams }: {
     ? await admin.from('workshop_registrations').select('id', { count: 'exact', head: true }).in('session_id', sessionIds)
     : { count: 0, error: null };
   if (countError) throw new Error(countError.message);
+  const paidCounts = tab === 'schedule' ? await countPaidWorkshopRegistrations(sessionIds) : undefined;
   const page = Math.max(1, Math.min(100000, Number.parseInt(query.page ?? '1', 10) || 1));
 
   async function registrationPanel() {
@@ -71,8 +73,8 @@ export default async function PartnerWorkshopDetail({ params, searchParams }: {
     <nav aria-label="Chi tiết workshop" className="mb-6 mt-7 flex overflow-x-auto border-b border-[#dce6e1]">{Object.entries(tabs).map(([key, label]) => <Link key={key} href={`${base}?tab=${key}`} aria-current={key === tab ? 'page' : undefined} className={`whitespace-nowrap border-b-2 px-4 py-4 text-sm font-medium ${key === tab ? 'border-[#195c46] text-[#195c46]' : 'border-transparent text-[#738787]'}`}>{label}{key === 'registrations' && <span className="ml-2 rounded-full bg-[#eaf4ee] px-2 py-0.5 text-xs">{count ?? 0}</span>}</Link>)}</nav>
     {tab === 'info' && <section className="partner-panel space-y-6 p-6">{workshop.cover_image && <img src={workshop.cover_image} alt={workshop.title} className="max-h-96 w-full rounded-xl object-cover" />}<div><h2 className="font-semibold">Mô tả ngắn</h2><p className="mt-3 whitespace-pre-line text-sm leading-7 partner-muted">{workshop.description || 'Chưa có mô tả.'}</p></div><div><h2 className="font-semibold">Nội dung trải nghiệm</h2><p className="mt-3 whitespace-pre-line text-sm leading-7 partner-muted">{workshop.experience_content || 'Chưa có nội dung trải nghiệm.'}</p></div>{workshop.status === 'REJECTED' && <p className="rounded-lg bg-red-50 p-4 text-sm text-red-700">Lý do từ chối: {workshop.reject_reason || 'Chưa ghi nhận lý do.'}</p>}</section>}
     {tab === 'schedule' && <div className="space-y-5">{sessions.map(session => {
-      const reserved = Math.max(0, session.capacity - session.remaining_seats);
-      return <section key={session.id} className="partner-panel p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><span className="rounded-full bg-[#eaf4ee] px-3 py-1 text-xs text-[#195c46]">{sessionStatuses[session.status] ?? session.status}</span><h2 className="mt-3 font-medium">{workshopDate(session.starts_at)} – {workshopDate(session.ends_at)}</h2><p className="mt-2 text-sm partner-muted">{session.location}</p><p className="mt-1 text-xs partner-muted">{formatVnd(session.fee)} / khách</p></div><div className="min-w-40"><p className="text-xl font-semibold">{reserved}/{session.capacity}</p><p className="text-xs partner-muted">chỗ đã được giữ</p><progress aria-label="Số chỗ đã giữ" value={reserved} max={session.capacity} className="mt-2 h-2 w-full accent-[#195c46]" /><p className="mt-1 text-xs partner-muted">Còn {session.remaining_seats} chỗ</p></div><Link href={`${base}?tab=registrations&session=${session.id}`} className="partner-action">Xem người đăng ký</Link></div></section>;
+      const registered = paidCounts?.get(session.id) ?? 0;
+      return <section key={session.id} className="partner-panel p-5 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-5"><div><span className="rounded-full bg-[#eaf4ee] px-3 py-1 text-xs text-[#195c46]">{sessionStatuses[session.status] ?? session.status}</span><h2 className="mt-3 font-medium">{workshopDate(session.starts_at)} – {workshopDate(session.ends_at)}</h2><p className="mt-2 text-sm partner-muted">{session.location}</p><p className="mt-1 text-xs partner-muted">{formatVnd(session.fee)} / khách</p></div><div className="min-w-40"><p className="text-xl font-semibold">{registered}/{session.capacity}</p><p className="text-xs partner-muted">chỗ đã thanh toán</p><progress aria-label="Số chỗ đã thanh toán" value={registered} max={session.capacity} className="mt-2 h-2 w-full accent-[#195c46]" /><p className="mt-1 text-xs partner-muted">Còn {session.remaining_seats} chỗ có thể đặt</p></div><Link href={`${base}?tab=registrations&session=${session.id}`} className="partner-action">Xem người đăng ký</Link></div></section>;
     })}{!sessions.length && <p className="partner-panel p-8 text-center partner-muted">Chưa có lịch tổ chức.</p>}</div>}
     {tab === 'registrations' && await registrationPanel()}
     {tab === 'history' && await historyPanel()}

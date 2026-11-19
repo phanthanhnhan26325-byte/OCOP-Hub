@@ -140,12 +140,12 @@ export function FinanceCard({
   }[accent];
 
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
+    <article className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex min-h-10 items-start justify-between gap-2">
         <p className="text-sm font-medium text-slate-600">{title}</p>
-        <span aria-hidden="true" className={`flex h-9 w-9 items-center justify-center rounded-lg text-lg ${styles}`}>↗</span>
+        <span aria-hidden="true" className={`flex size-8 shrink-0 items-center justify-center rounded-lg text-base ${styles}`}>↗</span>
       </div>
-      <p className="mt-3 text-xl font-bold tracking-tight text-slate-900">{value}</p>
+      <p className="mt-3 text-xl font-bold tracking-tight text-slate-900 tabular-nums">{value}</p>
       {trend && (
         <p className={`mt-2 text-xs font-medium ${trend.value >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
           {trend.value >= 0 ? '↑' : '↓'} {Math.abs(trend.value).toFixed(1)}% {trend.label}

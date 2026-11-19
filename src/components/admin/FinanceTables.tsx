@@ -90,8 +90,8 @@ export function FinancePartnerTable({
           <h2 className="font-semibold text-slate-900">Doanh thu theo doanh nghiệp</h2>
           <p className="mt-1 text-xs text-slate-500">
             {showWorkshopCount
-              ? 'GMV gồm doanh thu sản phẩm và workshop đã thanh toán; phí sàn áp dụng cho cả hai nguồn.'
-              : 'GMV là tổng giá trị hàng hóa; hoa hồng lấy từ phí đã lưu trên đơn, không tính GMV thành doanh thu OCOP Hub.'}
+              ? 'GMV gồm tiền hàng và workshop đủ điều kiện, sau hoàn tiền.'
+              : 'GMV là giá trị hàng hóa đủ điều kiện, sau hoàn tiền.'}
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">

@@ -24,11 +24,13 @@ export function CustomerOrderActions({
   status,
   phone,
   requests,
+  canRequestReturn,
 }: {
   orderId: string;
   status: string;
   phone: string;
   requests: OrderServiceRequest[];
+  canRequestReturn: boolean;
 }) {
   const [currentStatus, setCurrentStatus] = useState(status);
   const [showReturnForm, setShowReturnForm] = useState(false);
@@ -150,7 +152,7 @@ export function CustomerOrderActions({
             className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
             Xác nhận đã nhận hàng thành công
           </button>
-          {latestReturn?.status !== 'RETURN_RECEIVED' && (
+          {canRequestReturn && latestReturn?.status !== 'RETURN_RECEIVED' && (
             <button type="button" disabled={pending} onClick={() => setShowReturnForm(value => !value)}
               className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-medium text-amber-800 disabled:opacity-50">
               Yêu cầu trả hàng / hoàn tiền
@@ -166,7 +168,7 @@ export function CustomerOrderActions({
         </button>
       )}
 
-      {showReturnForm && (
+      {canRequestReturn && showReturnForm && (
         <form onSubmit={submitReturn} className="space-y-3 rounded-lg border border-amber-200 bg-white p-3">
           <label className="block text-sm">Lý do trả hàng / hoàn tiền *
             <textarea required minLength={3} maxLength={1000} value={reason} onChange={event => setReason(event.target.value)}

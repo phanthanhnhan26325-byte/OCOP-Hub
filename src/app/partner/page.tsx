@@ -78,7 +78,7 @@ export default async function PartnerDashboardPage({ searchParams }: { searchPar
           <Metric label="Tổng chi phí (phí sàn)" value={formatVnd(data.totalExpenses)} note="Phí sàn sản phẩm và workshop trong tháng" badge="10% theo đối soát" />
           <Metric label="Tổng lợi nhuận ước tính" value={formatVnd(data.totalProfit)} note="Doanh thu thuần sau phí sàn; chưa trừ giá vốn và chi phí riêng" badge={`Tháng ${Number(data.month.slice(5))}/${data.month.slice(0, 4)}`} />
           <Metric label="Số tiền đã đối soát / chuyển" value={formatVnd(data.paidOut)} note="Tiền thực tế đã chuyển trong tháng đã chọn" badge={`Tháng ${Number(data.month.slice(5))}/${data.month.slice(0, 4)}`} href="/partner/settlements" />
-          <Metric label="Còn phải thanh toán" value={formatVnd(data.payable)} note="Số dư của các kỳ đã xác nhận" badge={`${data.statementCount} kỳ`} href="/partner/settlements" />
+          <Metric label="Còn phải thanh toán" value={formatVnd(data.payable)} note="Còn nợ đã chốt và tiền bán hàng, workshop chờ đối soát" badge="Tất cả thời gian" href="/partner/settlements" />
         </div>
       </section>
       <section className="mt-6">
@@ -113,7 +113,7 @@ export default async function PartnerDashboardPage({ searchParams }: { searchPar
         </section>
       </div>
       <RecentOrders orders={data.recentOrders} />
-      <p className="mt-5 text-xs leading-6 partner-muted">Chi phí ở đây là phí sàn sản phẩm và workshop; lợi nhuận ước tính là doanh thu thuần sau phí sàn, chưa trừ giá vốn hoặc chi phí riêng của doanh nghiệp. Doanh thu thuần tính theo tháng thanh toán sau hoàn tiền (nếu có) và phí sàn; số tiền đã đối soát là khoản thực tế đã chuyển.</p>
+      <p className="mt-5 text-xs leading-6 partner-muted">Chi phí ở đây là phí sàn sản phẩm và workshop; lợi nhuận ước tính là doanh thu thuần sau phí sàn, chưa trừ giá vốn hoặc chi phí riêng của doanh nghiệp. Tiền hàng ghi nhận khi khách xác nhận hoặc hết 72 giờ sau giao hàng; workshop ghi nhận khi thanh toán thành công. Doanh thu thuần đã trừ hoàn tiền và phí sàn; số đã chi trả là khoản thực tế đã chuyển.</p>
     </>}
     {!approved && data.applications.length > 0 && <section className="partner-panel mt-6 p-6"><h2 className="text-lg font-medium">Lịch sử hồ sơ</h2><ul className="mt-4 divide-y divide-[#eaf0ec]">{data.applications.map(application => <li key={application.id} className="py-3 text-sm"><span className="font-medium">{application.status === 'PENDING' ? 'Chờ duyệt' : application.status === 'APPROVED' ? 'Đã duyệt' : 'Bị từ chối'}</span><span className="ml-3 text-xs partner-muted">{datePart(application.created_at, { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>{application.reject_reason && <p className="mt-2 text-xs text-red-700">{application.reject_reason}</p>}</li>)}</ul></section>}
   </div>;

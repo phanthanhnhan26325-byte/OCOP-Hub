@@ -106,7 +106,7 @@ export default async function AdminFinanceReconciliationPage({
       title="Đối soát doanh nghiệp"
       description="Tổng hợp doanh thu đủ điều kiện, phí nền tảng, hoàn tiền, điều chỉnh và recover theo từng tháng."
     >
-      <section className="rounded-xl border border-emerald-200 bg-white p-5">
+      <section id="settlement-requests" className="scroll-mt-28 rounded-xl border border-emerald-200 bg-white p-5">
         <h2 className="font-semibold">Yêu cầu đối soát từ doanh nghiệp</h2>
         <p className="mt-1 text-sm text-slate-500">Duyệt hoặc từ chối yêu cầu. Sau khi chuyển khoản thủ công, nhập mã giao dịch và tải chứng từ để ghi nhận đã đối soát.</p>
         <SettlementRequestActions requests={requests} />

@@ -34,6 +34,7 @@ export type ProfileOrder = {
     }>;
     order_status_history: Array<{ to_status: string; created_at: string; reason: string | null }>;
     order_service_requests: OrderServiceRequest[];
+    canRequestReturn: boolean;
   }> | null;
 };
 
@@ -703,6 +704,7 @@ export function ProfileWorkspace({
                   status={child.status}
                   phone={typeof selectedOrder.shipping_address.phone === 'string' ? selectedOrder.shipping_address.phone : ''}
                   requests={child.order_service_requests}
+                  canRequestReturn={child.canRequestReturn}
                 />
               </section>
             ))}

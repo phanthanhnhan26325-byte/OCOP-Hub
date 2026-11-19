@@ -4,7 +4,6 @@ export interface FinanceChartPoint {
   label: string;
   gmv: number;
   commission: number;
-  shipping: number;
   operating: number;
   profit: number;
 }
@@ -59,7 +58,7 @@ export function FinanceTrendChart({
   const chartHeight = height - top - bottom;
   const tickStep = Math.max(1, Math.ceil((points.length - 1) / 7));
   const values = points.flatMap((point) => [
-    point.gmv, point.commission, point.shipping, point.profit,
+    point.gmv, point.commission, point.profit,
   ]);
   const minValue = Math.min(0, ...values);
   const maxValue = Math.max(1, ...values);
@@ -69,7 +68,6 @@ export function FinanceTrendChart({
   const lines = [
     { key: 'gmv', name: 'GMV', color: '#0f766e' },
     { key: 'commission', name: 'Hoa hồng', color: '#e11d48' },
-    { key: 'shipping', name: 'Vận chuyển', color: '#f59e0b' },
     { key: 'profit', name: 'Lợi nhuận ước tính', color: '#7c3aed' },
   ] as const;
 

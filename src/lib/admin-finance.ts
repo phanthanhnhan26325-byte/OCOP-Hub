@@ -1,3 +1,4 @@
+import { loadFinanceEvents } from '@/lib/finance-events';
 import { supabaseServer } from '@/lib/supabase/server';
 
 type Supabase = Awaited<ReturnType<typeof supabaseServer>>;
@@ -20,6 +21,7 @@ export interface FinanceOrderItem {
 }
 
 export interface FinanceOrder {
+  event_id: string;
   id: string;
   code: string;
   parent_order_id: string;
@@ -27,8 +29,8 @@ export interface FinanceOrder {
   status: string;
   subtotal: number | string;
   platform_fee: number | string;
-  shipping_fee: number | string;
-  placed_at: string;
+  original_subtotal: number;
+  recognized_at: string;
   partner_profiles: Relation<{ business_name: string }>;
   order_items: FinanceOrderItem[] | null;
   refunded_share: number;
@@ -36,11 +38,13 @@ export interface FinanceOrder {
 }
 
 export interface FinanceWorkshopRegistration {
+  event_id: string;
   id: string;
   code: string;
   amount: number | string;
   platform_fee: number | string;
-  created_at: string;
+  recognized_at: string;
+  refund: number;
   starts_at: string;
   workshop_id: string;
   workshop_title: string;
@@ -50,7 +54,7 @@ export interface FinanceWorkshopRegistration {
 
 export interface FinanceExpense {
   id: string;
-  expense_type: 'SHIPPING' | 'OPERATING';
+  expense_type: 'OPERATING';
   description: string;
   amount: number | string;
   incurred_at: string;
@@ -109,7 +113,7 @@ export function firstFinanceRelation<T>(relation: Relation<T>): T | null {
 }
 
 function isoDayStart(day: string) {
-  return `${day}T00:00:00.000Z`;
+  return `${day}T00:00:00.000+07:00`;
 }
 
 function addDays(day: string, days: number) {
@@ -123,7 +127,7 @@ export function financeDateRange(
   fromValue?: string,
   toValue?: string,
 ): FinanceRange & { range: string } {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
   const year = Number(today.slice(0, 4));
   const month = Number(today.slice(5, 7));
   const firstOfMonth = `${today.slice(0, 7)}-01`;
@@ -172,68 +176,88 @@ export async function loadFinanceSnapshot(
 ): Promise<FinanceSnapshot> {
   const start = isoDayStart(range.from);
   const end = isoDayStart(addDays(range.to, 1));
-  const [orderResult, workshopRegistrationResult] = await Promise.all([
-    supabase
-      .from('orders')
-      .select('id, code, parent_order_id, partner_id, status, subtotal, platform_fee, shipping_fee, placed_at, partner_profiles(business_name), order_items(product_id, product_name, qty, line_total, products(category_id, product_categories(name)))')
-      .eq('order_level', 'CHILD')
-      .gte('placed_at', start)
-      .lt('placed_at', end)
-      .order('placed_at', { ascending: false })
-      .limit(5000),
-    supabase
-      .from('workshop_registrations')
-      .select('id, code, amount, platform_fee, created_at, workshop_sessions(starts_at, workshops(id, title, partner_id, partner_profiles(business_name)))')
-      .in('status', ['CONFIRMED', 'COMPLETED'])
-      .gte('created_at', start)
-      .lt('created_at', end)
-      .order('created_at', { ascending: false })
-      .limit(5000),
+  const [events, expensesResult, statementsResult, payoutsResult, recoveriesResult] = await Promise.all([
+    loadFinanceEvents(start, end),
+    supabase.from('financial_expenses').select('id, expense_type, description, amount, incurred_at, reference_code, recorded_by').eq('expense_type', 'OPERATING').gte('incurred_at', start).lt('incurred_at', end).order('incurred_at', { ascending: false }).limit(5000),
+    supabase.from('settlement_statements').select('id, partner_id, period_start, period_end, gross_amount, refund_amount, platform_fee, adjustments, net_payable, status, created_at').gte('period_start', range.from).lte('period_end', range.to).order('created_at', { ascending: false }).limit(5000),
+    supabase.from('payouts').select('id, statement_id, partner_id, amount, method, ref_no, transferred_at, recorded_by').gte('transferred_at', start).lt('transferred_at', end).order('transferred_at', { ascending: false }).limit(5000),
+    supabase.from('partner_recoveries').select('id, partner_id, refund_id, order_id, amount, recovered_amount, created_at, partner_profiles(business_name)').order('created_at', { ascending: false }).limit(5000),
   ]);
-  const { data: orderData, error: orderError } = orderResult;
-  const { data: workshopRegistrationData, error: workshopRegistrationError } = workshopRegistrationResult;
-  if (orderError) throw new Error(orderError.message);
-  if (workshopRegistrationError) throw new Error(workshopRegistrationError.message);
+  for (const result of [expensesResult, statementsResult, payoutsResult, recoveriesResult]) {
+    if (result.error) throw new Error(result.error.message);
+  }
 
-  const candidateOrders = (orderData ?? []) as unknown as Omit<FinanceOrder, 'refunded_share' | 'commission'>[];
-  const parentIds = [...new Set(candidateOrders.map((order) => order.parent_order_id))];
-  const candidateWorkshopRegistrations = (workshopRegistrationData ?? []) as unknown as {
-    id: string;
+  const orderEvents = events.filter(event => event.ref_type === 'SUB_ORDER' || event.ref_type === 'REFUND');
+  const workshopEvents = events.filter(event => event.ref_type === 'WORKSHOP_REGISTRATION' || event.ref_type === 'WORKSHOP_REFUND');
+  const orderIds = [...new Set(orderEvents.map(event => event.sale_id))];
+  const registrationIds = [...new Set(workshopEvents.map(event => event.sale_id))];
+  const orderDetails = new Map<string, Omit<FinanceOrder, 'recognized_at' | 'refunded_share' | 'commission' | 'original_subtotal' | 'event_id'>>();
+  const workshopDetails = new Map<string, {
     code: string;
-    amount: number | string;
-    platform_fee: number | string;
-    created_at: string;
     workshop_sessions: Relation<{
       starts_at: string;
       workshops: Relation<{
-        id: string;
-        title: string;
-        partner_id: string;
+        id: string; title: string; partner_id: string;
         partner_profiles: Relation<{ business_name: string }>;
       }>;
     }>;
-  }[];
-  const workshopRegistrationIds = candidateWorkshopRegistrations.map((registration) => registration.id);
-  const [allChildrenResult, paymentsResult, workshopPaymentsResult, expensesResult, statementsResult, payoutsResult, recoveriesResult] =
-    await Promise.all([
-      parentIds.length > 0
-        ? supabase.from('orders').select('parent_order_id, subtotal').eq('order_level', 'CHILD').in('parent_order_id', parentIds).limit(10000)
-        : Promise.resolve({ data: [], error: null }),
-      parentIds.length > 0
-        ? supabase.from('payments').select('id, reference_id, status, refunded_amount, business_sync_status').eq('purpose', 'ORDER').in('reference_id', parentIds).in('status', ['PAID', 'PARTIALLY_REFUNDED', 'REFUNDED']).eq('business_sync_status', 'SYNCED')
-        : Promise.resolve({ data: [], error: null }),
-      workshopRegistrationIds.length > 0
-        ? supabase.from('payments').select('reference_id').eq('purpose', 'WORKSHOP_REGISTRATION').in('reference_id', workshopRegistrationIds).eq('status', 'PAID').eq('business_sync_status', 'SYNCED')
-        : Promise.resolve({ data: [], error: null }),
-      supabase.from('financial_expenses').select('id, expense_type, description, amount, incurred_at, reference_code, recorded_by').gte('incurred_at', start).lt('incurred_at', end).order('incurred_at', { ascending: false }).limit(5000),
-      supabase.from('settlement_statements').select('id, partner_id, period_start, period_end, gross_amount, refund_amount, platform_fee, adjustments, net_payable, status, created_at').gte('period_start', range.from).lte('period_end', range.to).order('created_at', { ascending: false }).limit(5000),
-      supabase.from('payouts').select('id, statement_id, partner_id, amount, method, ref_no, transferred_at, recorded_by').gte('transferred_at', start).lt('transferred_at', end).order('transferred_at', { ascending: false }).limit(5000),
-      supabase.from('partner_recoveries').select('id, partner_id, refund_id, order_id, amount, recovered_amount, created_at, partner_profiles(business_name)').order('created_at', { ascending: false }).limit(5000),
-    ]);
+  }>();
 
-  for (const result of [allChildrenResult, paymentsResult, workshopPaymentsResult, expensesResult, statementsResult, payoutsResult, recoveriesResult]) {
-    if (result.error) throw new Error(result.error.message);
-  }
+  await Promise.all([
+    (async () => {
+      for (let offset = 0; offset < orderIds.length; offset += 100) {
+        const { data, error } = await supabase.from('orders')
+          .select('id, code, parent_order_id, partner_id, status, subtotal, platform_fee, partner_profiles(business_name), order_items(product_id, product_name, qty, line_total, products(category_id, product_categories(name)))')
+          .in('id', orderIds.slice(offset, offset + 100));
+        if (error) throw new Error(error.message);
+        for (const order of data) orderDetails.set(order.id, order as unknown as NonNullable<ReturnType<typeof orderDetails.get>>);
+      }
+    })(),
+    (async () => {
+      for (let offset = 0; offset < registrationIds.length; offset += 100) {
+        const { data, error } = await supabase.from('workshop_registrations')
+          .select('id, code, workshop_sessions(starts_at, workshops(id, title, partner_id, partner_profiles(business_name)))')
+          .in('id', registrationIds.slice(offset, offset + 100));
+        if (error) throw new Error(error.message);
+        for (const registration of data) workshopDetails.set(registration.id, registration as unknown as NonNullable<ReturnType<typeof workshopDetails.get>>);
+      }
+    })(),
+  ]);
+
+  const orders = orderEvents.map((event): FinanceOrder => {
+    const order = orderDetails.get(event.sale_id);
+    if (!order) throw new Error('Missing order for finance event');
+    return {
+      ...order,
+      event_id: event.ref_id + ':' + event.sale_id,
+      subtotal: Number(event.gross),
+      original_subtotal: Number(order.subtotal),
+      recognized_at: event.recognized_at,
+      refunded_share: Number(event.refund),
+      commission: Number(event.fee),
+    };
+  });
+
+  const workshopRegistrations = workshopEvents.map((event): FinanceWorkshopRegistration => {
+    const registration = workshopDetails.get(event.sale_id);
+    const session = firstFinanceRelation(registration?.workshop_sessions ?? null);
+    const workshop = firstFinanceRelation(session?.workshops ?? null);
+    if (!registration || !session || !workshop) throw new Error('Missing workshop for finance event');
+    return {
+      id: event.sale_id,
+      event_id: event.ref_id,
+      code: registration.code,
+      amount: Number(event.gross),
+      refund: Number(event.refund),
+      platform_fee: Number(event.fee),
+      recognized_at: event.recognized_at,
+      starts_at: session.starts_at,
+      workshop_id: workshop.id,
+      workshop_title: workshop.title,
+      partner_id: workshop.partner_id,
+      partner_name: firstFinanceRelation(workshop.partner_profiles)?.business_name ?? 'Doanh nghiệp',
+    };
+  });
 
   const statements = (statementsResult.data ?? []) as unknown as FinanceStatement[];
   const statementIds = statements.map((statement) => statement.id);
@@ -245,59 +269,6 @@ export async function loadFinanceSnapshot(
   for (const payout of (statementPayoutData ?? []) as unknown as { statement_id: string; amount: number | string }[]) {
     paidByStatement[payout.statement_id] = (paidByStatement[payout.statement_id] ?? 0) + Number(payout.amount);
   }
-
-  const allChildren = (allChildrenResult.data ?? []) as unknown as { parent_order_id: string; subtotal: number | string }[];
-  const payments = (paymentsResult.data ?? []) as unknown as {
-    id: string;
-    reference_id: string;
-    refunded_amount: number | string;
-  }[];
-  const refundableByParent = new Map<string, number>();
-  for (const payment of payments) {
-    refundableByParent.set(
-      payment.reference_id,
-      (refundableByParent.get(payment.reference_id) ?? 0) + Number(payment.refunded_amount),
-    );
-  }
-  const totalByParent = new Map<string, number>();
-  for (const child of allChildren) {
-    totalByParent.set(child.parent_order_id, (totalByParent.get(child.parent_order_id) ?? 0) + Number(child.subtotal));
-  }
-  const paidParents = new Set(payments.map((payment) => payment.reference_id));
-  const orders = candidateOrders
-    .filter((order) => paidParents.has(order.parent_order_id))
-    .map((order): FinanceOrder => {
-      const parentTotal = totalByParent.get(order.parent_order_id) ?? 0;
-      const parentRefund = refundableByParent.get(order.parent_order_id) ?? 0;
-      const refundShare = parentTotal > 0 ? Math.min(Number(order.subtotal), parentRefund * Number(order.subtotal) / parentTotal) : 0;
-      const fee = Number(order.platform_fee);
-      const commission = Number(order.subtotal) > 0
-        ? Math.max(0, fee * (1 - refundShare / Number(order.subtotal)))
-        : 0;
-      return { ...order, refunded_share: refundShare, commission };
-    });
-  const paidWorkshopRegistrationIds = new Set(
-    (workshopPaymentsResult.data ?? []).map((payment) => payment.reference_id),
-  );
-  const workshopRegistrations = candidateWorkshopRegistrations.flatMap((registration) => {
-    if (!paidWorkshopRegistrationIds.has(registration.id)) return [];
-    const session = firstFinanceRelation(registration.workshop_sessions);
-    const workshop = firstFinanceRelation(session?.workshops);
-    if (!session || !workshop) return [];
-    const partner = firstFinanceRelation(workshop.partner_profiles);
-    return [{
-      id: registration.id,
-      code: registration.code,
-      amount: registration.amount,
-      platform_fee: registration.platform_fee,
-      created_at: registration.created_at,
-      starts_at: session.starts_at,
-      workshop_id: workshop.id,
-      workshop_title: workshop.title,
-      partner_id: workshop.partner_id,
-      partner_name: partner?.business_name ?? 'Doanh nghiệp',
-    }];
-  });
 
   return {
     orders,
@@ -334,7 +305,7 @@ export function groupFinanceOrders(orders: FinanceOrder[]) {
       commission: 0,
       refunds: 0,
     };
-    current.orderCount += 1;
+    if (!order.refunded_share) current.orderCount += 1;
     current.gmv += Number(order.subtotal);
     current.commission += order.commission;
     current.refunds += order.refunded_share;
@@ -344,18 +315,19 @@ export function groupFinanceOrders(orders: FinanceOrder[]) {
 }
 
 export function financeGroupKey(dateValue: string, grouping: string) {
-  const date = new Date(dateValue);
+  const date = new Date(new Date(dateValue).getTime() + 7 * 60 * 60 * 1000);
   const year = date.getUTCFullYear();
   const month = date.getUTCMonth() + 1;
   if (grouping === 'year') return `${year}`;
   if (grouping === 'quarter') return `${year}-Q${Math.floor(date.getUTCMonth() / 3) + 1}`;
   if (grouping === 'month') return `${year}-${String(month).padStart(2, '0')}`;
   if (grouping === 'week') {
+    date.setUTCHours(0, 0, 0, 0);
     const first = new Date(Date.UTC(year, 0, 1));
     const week = Math.ceil(((date.getTime() - first.getTime()) / 86_400_000 + first.getUTCDay() + 1) / 7);
     return `${year}-W${String(week).padStart(2, '0')}`;
   }
-  return dateValue.slice(0, 10);
+  return date.toISOString().slice(0, 10);
 }
 
 export function financeBucketDates(range: FinanceRange, grouping: string) {
@@ -366,7 +338,7 @@ export function financeBucketDates(range: FinanceRange, grouping: string) {
   while (cursor <= end && keys.length < 500) {
     const key = financeGroupKey(cursor.toISOString(), grouping);
     if (keys[keys.length - 1] !== key) keys.push(key);
-    cursor.setUTCDate(cursor.getUTCDate() + (grouping === 'week' ? 7 : 1));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
     if (['month', 'quarter', 'year'].includes(grouping)) {
       cursor.setUTCDate(1);
       if (grouping === 'year') cursor.setUTCMonth(0);

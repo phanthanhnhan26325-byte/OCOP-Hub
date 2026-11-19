@@ -42,7 +42,9 @@ export function SettlementActions({ partners, statementId, net, status }: { part
       <p className="mt-2 text-xs text-slate-500">
         {net && net > 0
           ? 'Khoản chuyển cần gắn với yêu cầu đối soát đã được duyệt ở danh sách yêu cầu.'
-          : 'Đã chuyển đủ.'}
+          : net !== undefined && net < 0
+            ? 'Khoản âm được chuyển sang kỳ đối soát tiếp theo.'
+            : 'Không còn số dư phải trả.'}
       </p>
     );
   }
@@ -51,7 +53,7 @@ export function SettlementActions({ partners, statementId, net, status }: { part
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (!window.confirm(`Tạo kỳ đối soát tháng ${month} cho doanh nghiệp đã chọn? Snapshot sẽ không bị ghi đè khi tạo lại.`)) return;
+        if (!window.confirm(`Tạo kỳ đối soát tháng ${month} cho doanh nghiệp đã chọn? Kỳ nháp được tính lại theo dữ liệu mới nhất.`)) return;
         startTransition(async () => {
           const [year, monthNumber] = month.split('-').map(Number);
           const periodStart = `${month}-01`;

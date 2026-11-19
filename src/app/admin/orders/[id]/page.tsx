@@ -530,6 +530,7 @@ export default async function AdminOrderDetailPage({
         orderId={order.id}
         orderStatus={canCancel ? order.status : overallStatus}
         payments={payments}
+        childOrders={children.map(({ id, code, status }) => ({ id, code, status }))}
       />
     </div>
   );

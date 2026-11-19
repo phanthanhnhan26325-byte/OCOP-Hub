@@ -4,7 +4,7 @@ import { handleApiError, requireRole } from '@/lib/rbac';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 const expenseSchema = z.object({
-  expenseType: z.enum(['SHIPPING', 'OPERATING']),
+  expenseType: z.literal('OPERATING'),
   description: z.string().trim().min(3).max(500),
   amount: z.number().int().positive(),
   incurredAt: z.string().datetime(),
